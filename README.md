@@ -1,0 +1,1 @@
+# poc-app-platform-aws
