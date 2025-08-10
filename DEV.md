@@ -15,12 +15,16 @@ The PoC will be implemented in phases, each with clearly defined technical objec
     * `DIGITALOCEAN_ACCESS_TOKEN`
     * `AWS_ACCESS_KEY_ID`
     * `AWS_SECRET_ACCESS_KEY`
+
+    Assume these Env Vars will be set whereever terrafrom deploy will be run and they do not need to be passed into the terraform command, but will automatically be used by terraform.
 * **Stateless re‑targeting:** By updating these secrets (and any provider/account IDs captured as variables) to point at a different **DigitalOcean Team** and **AWS account**, then re-running the deploy workflow, the pipeline should create a **fresh, isolated deployment** in the new environments without modifying the previous one.
 * **Inputs over edits:** Environment- and account-specific values should be expressed as Terraform variables or GitHub Actions inputs, not hard-coded in modules or app code.
 * **Idempotence:** Terraform plans must be clean on re-runs; CI should fail on drift.
 * If the case there does need to be manual interact with GitHub, DigitalOcean or AWS this will be done for you. You are not to use utilities or interact directly with GitHub, DigitalOcean or AWS.
 * Make and Makefile should be used for repo actions like building a container, deploying, testing, linting, etc. If a Github action job doesn't use a pre-created action then it should use make to perform the action.
 * The DO sfo3 region and the AWS us-west-2 region should be used
+* Ensure that all resources create by Terraform are tagged with my username jkeegan. For DO this is just the value as a tag, in aws the key should be `Owner` and the value should be `jkeegan`.
+* In DO any resource that is created and can be part of a Project should be made part of a `jkeegan` project.
 
 ## Phase 1: Foundation Setup
 
