@@ -15,6 +15,8 @@ The PoC will be implemented in phases, each with clearly defined technical objec
     * `DIGITALOCEAN_ACCESS_TOKEN`
     * `AWS_ACCESS_KEY_ID`
     * `AWS_SECRET_ACCESS_KEY`
+    * `SPACES_ACCESS_KEY_ID`
+    * `SPACES_SECRET_ACCESS_KEY`
 
     Assume these Env Vars will be set whereever terrafrom deploy will be run and they do not need to be passed into the terraform command, but will automatically be used by terraform.
 * **Stateless re‑targeting:** By updating these secrets (and any provider/account IDs captured as variables) to point at a different **DigitalOcean Team** and **AWS account**, then re-running the deploy workflow, the pipeline should create a **fresh, isolated deployment** in the new environments without modifying the previous one.

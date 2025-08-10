@@ -63,6 +63,59 @@ variable "image_tag" {
   default     = "latest"
 }
 
+resource "digitalocean_spaces_bucket" "frontend" {
+  name       = "poc-app-platform-aws-frontend-space"
+  region     = var.do_region
+  acl        = "public-read"
+
+}
+
+resource "digitalocean_spaces_bucket_cors_configuration" "frontend_cors" {
+  bucket = digitalocean_spaces_bucket.frontend.name
+  region = var.do_region
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET"]
+    allowed_origins = ["*"]
+  }
+}
+
+resource "digitalocean_spaces_bucket_object" "index" {
+  bucket       = digitalocean_spaces_bucket.frontend.name
+  key          = "index.html"
+  source       = "../frontend/index.html"
+  acl          = "public-read"
+  content_type = "text/html"
+  region       = var.do_region
+}
+
+resource "digitalocean_spaces_bucket_object" "styles" {
+  bucket       = digitalocean_spaces_bucket.frontend.name
+  key          = "styles.css"
+  source       = "../frontend/styles.css"
+  acl          = "public-read"
+  content_type = "text/css"
+  region       = var.do_region
+}
+
+resource "digitalocean_spaces_bucket_object" "app_js" {
+  bucket       = digitalocean_spaces_bucket.frontend.name
+  key          = "app.js"
+  source       = "../frontend/app.js"
+  acl          = "public-read"
+  content_type = "application/javascript"
+  region       = var.do_region
+}
+
+resource "digitalocean_project_resources" "poc" {
+  project = digitalocean_project.poc.id
+  resources = [
+    digitalocean_spaces_bucket.frontend.urn
+  ]
+}
+
+
 resource "digitalocean_app" "poc_app" {
   project_id = digitalocean_project.poc.id
   spec {
@@ -70,7 +123,7 @@ resource "digitalocean_app" "poc_app" {
     region = var.do_region
 
     service {
-      name               = "hello-world-svc"
+      name               = "api-svc"
       instance_count     = 1
       instance_size_slug = "apps-s-1vcpu-1gb"
 
@@ -80,7 +133,75 @@ resource "digitalocean_app" "poc_app" {
         tag           = var.image_tag
       }
 
-      http_port = 80
+      http_port = 8080
+
+      health_check {
+        http_path = "/healthz"
+        port      = 8080
+      }
+
+      # Environment variables are derived from the attached databases
+      # and the frontend Spaces bucket.
+      env {
+        key   = "API_CORS_ORIGINS"
+        value = "https://${digitalocean_spaces_bucket.frontend.bucket_domain_name}"
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "PGHOST"
+        value = digitalocean_database_cluster.postgres.host
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "PGPORT"
+        value = digitalocean_database_cluster.postgres.port
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "PGDATABASE"
+        value = digitalocean_database_cluster.postgres.database
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "PGUSER"
+        value = digitalocean_database_cluster.postgres.user
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "PGPASSWORD"
+        value = digitalocean_database_cluster.postgres.password
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+      env {
+        key   = "PGSSLMODE"
+        value = "require"
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "VALKEY_HOST"
+        value = digitalocean_database_cluster.valkey.host
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "VALKEY_PORT"
+        value = digitalocean_database_cluster.valkey.port
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "VALKEY_PASSWORD"
+        value = digitalocean_database_cluster.valkey.password
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
     }
 
     ingress {
@@ -91,7 +212,7 @@ resource "digitalocean_app" "poc_app" {
           }
         }
         component {
-          name = "hello-world-svc"
+          name = "api-svc"
         }
       }
     }
@@ -115,4 +236,14 @@ resource "digitalocean_app" "poc_app" {
 output "app_url" {
   description = "The live URL of the deployed application"
   value       = digitalocean_app.poc_app.live_url
+}
+
+output "frontend_url" {
+  description = "The public URL of the frontend"
+  value       = "https://${digitalocean_spaces_bucket.frontend.bucket_domain_name}/index.html"
+}
+
+output "frontend_bucket_name" {
+  description = "The name of the frontend Spaces bucket"
+  value       = digitalocean_spaces_bucket.frontend.name
 }
