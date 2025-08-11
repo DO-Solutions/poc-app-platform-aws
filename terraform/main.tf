@@ -25,11 +25,15 @@ variable "do_project_name" {
   default     = "jkeegan"
 }
 
-provider "digitalocean" {}
+variable "image_tag" {
+  description = "The tag for the container image"
+  type        = string
+  default     = "latest"
+}
 
 resource "digitalocean_project" "poc" {
   name        = var.do_project_name
-  description = "Project for jkeegan's resources"
+  description = "Project for poc-app-platform-aws resources"
   purpose     = "Web Application"
   environment = "Development"
 }
@@ -57,16 +61,10 @@ resource "digitalocean_database_cluster" "valkey" {
   project_id = digitalocean_project.poc.id
 }
 
-variable "image_tag" {
-  description = "The tag for the container image"
-  type        = string
-  default     = "latest"
-}
-
 resource "digitalocean_spaces_bucket" "frontend" {
-  name       = "poc-app-platform-aws-frontend-space"
-  region     = var.do_region
-  acl        = "public-read"
+  name   = "poc-app-platform-aws-frontend-space"
+  region = var.do_region
+  acl    = "public-read"
 
 }
 
@@ -218,10 +216,10 @@ resource "digitalocean_app" "poc_app" {
     }
 
     database {
-      name       = "postgres"
+      name         = "postgres"
       cluster_name = digitalocean_database_cluster.postgres.name
-      engine     = "PG"
-      production = true
+      engine       = "PG"
+      production   = true
     }
 
     database {

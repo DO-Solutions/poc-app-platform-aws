@@ -1,4 +1,4 @@
-const API_URL = 'https://poc-app-platform-aws-zs3en.ondigitalocean.app';
+const API_URL = 'https://poc-app-platform-aws-defua.ondigitalocean.app';
 
 document.addEventListener('DOMContentLoaded', () => {
     fetch(`${API_URL}/db/status`)
