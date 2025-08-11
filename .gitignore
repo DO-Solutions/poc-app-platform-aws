@@ -39,3 +39,4 @@ terraform.rc
 .idea/
 scratch/
 build/
+.claude/

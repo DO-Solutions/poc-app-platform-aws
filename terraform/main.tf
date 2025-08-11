@@ -86,6 +86,7 @@ resource "digitalocean_spaces_bucket_object" "index" {
   acl          = "public-read"
   content_type = "text/html"
   region       = var.do_region
+  etag         = filemd5("../frontend/index.html")
 }
 
 resource "digitalocean_spaces_bucket_object" "styles" {
@@ -95,6 +96,7 @@ resource "digitalocean_spaces_bucket_object" "styles" {
   acl          = "public-read"
   content_type = "text/css"
   region       = var.do_region
+  etag         = filemd5("../frontend/styles.css")
 }
 
 resource "digitalocean_spaces_bucket_object" "app_js" {
@@ -104,6 +106,7 @@ resource "digitalocean_spaces_bucket_object" "app_js" {
   acl          = "public-read"
   content_type = "application/javascript"
   region       = var.do_region
+  etag         = filemd5("../frontend/app.js")
 }
 
 resource "digitalocean_project_resources" "poc" {
