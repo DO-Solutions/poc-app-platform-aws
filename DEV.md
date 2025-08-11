@@ -111,16 +111,18 @@ The PoC will be implemented in phases, each with clearly defined technical objec
 
 ## Phase 3: AWS Service Integration
 
-**Summary:** Integrate AWS WAF with CloudFront and configure Secrets Manager access from App Platform.
+**Summary:** Integrate AWS WAF with CloudFront with access from App Platform.
 
 ### Technical Objectives:
 
 1. **AWS WAF & CloudFront**
 
     * Provision CloudFront distribution with AWS WAF WebACL.
-    * Configure origin to point to the App Platform default URL.
+    * Configure two origins
+      * App Platform default URL for API calls
+      * Spaces Bucket for static content
     * Validate that traffic flows from CloudFront → App Platform.
-    * A CNAME \`ap-aws-poc.digitailocean.solutions\` should be created for the CloudFront Distribution. The digitailocean.solutions domain is within the Team used for the PoC so creating the CNAME should be done using Terraform with the rest of the stack.
+    * A CNAME \`poc-app-platform-aws.digitailocean.solutions\` should be created for the CloudFront Distribution. The digitailocean.solutions domain is within the Team used for the PoC so creating the CNAME should be done using Terraform with the rest of the stack.
 
 ### Success Criteria:
 

@@ -4,6 +4,31 @@ terraform {
       source  = "digitalocean/digitalocean"
       version = "~> 2.0"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+# AWS Provider for us-east-1 (required for CloudFront WAF)
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+  default_tags {
+    tags = {
+      Owner = "jkeegan"
+    }
+  }
+}
+
+# AWS Provider for us-west-2 (primary region)
+provider "aws" {
+  region = "us-west-2"
+  default_tags {
+    tags = {
+      Owner = "jkeegan"
+    }
   }
 }
 
@@ -145,7 +170,7 @@ resource "digitalocean_app" "poc_app" {
       # and the frontend Spaces bucket.
       env {
         key   = "API_CORS_ORIGINS"
-        value = "https://${digitalocean_spaces_bucket.frontend.bucket_domain_name}"
+        value = "https://${digitalocean_spaces_bucket.frontend.bucket_domain_name},https://poc-app-platform-aws.digitalocean.solutions"
         scope = "RUN_TIME"
         type  = "GENERAL"
       }
@@ -247,4 +272,220 @@ output "frontend_url" {
 output "frontend_bucket_name" {
   description = "The name of the frontend Spaces bucket"
   value       = digitalocean_spaces_bucket.frontend.name
+}
+
+# AWS WAF WebACL (must be in us-east-1 for CloudFront)
+resource "aws_wafv2_web_acl" "main" {
+  provider = aws.us_east_1
+  
+  name  = "poc-app-platform-aws-waf"
+  scope = "CLOUDFRONT"
+
+  default_action {
+    allow {}
+  }
+
+  # Rate limiting rule
+  rule {
+    name     = "RateLimitRule"
+    priority = 1
+
+    statement {
+      rate_based_statement {
+        limit              = 2000
+        aggregate_key_type = "IP"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                 = "RateLimitRule"
+      sampled_requests_enabled    = true
+    }
+
+    action {
+      block {}
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                 = "poc-app-platform-aws-waf"
+    sampled_requests_enabled    = true
+  }
+
+  tags = {
+    Name  = "poc-app-platform-aws-waf"
+    Owner = "jkeegan"
+  }
+}
+
+# CloudFront Distribution
+resource "aws_cloudfront_distribution" "main" {
+  provider = aws.us_east_1
+  
+  # App Platform API origin
+  origin {
+    domain_name = "poc-app-platform-aws-defua.ondigitalocean.app"
+    origin_id   = "app-platform-api"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  # Spaces bucket origin
+  origin {
+    domain_name = digitalocean_spaces_bucket.frontend.bucket_domain_name
+    origin_id   = "spaces-bucket"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  enabled             = true
+  is_ipv6_enabled     = true
+  default_root_object = "index.html"
+  web_acl_id          = aws_wafv2_web_acl.main.arn
+
+  # Default behavior - serve static assets from Spaces
+  default_cache_behavior {
+    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "spaces-bucket"
+
+    forwarded_values {
+      query_string = false
+
+      cookies {
+        forward = "none"
+      }
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 3600
+    max_ttl                = 86400
+  }
+
+  # API behavior - proxy to App Platform
+  ordered_cache_behavior {
+    path_pattern     = "/api/*"
+    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "app-platform-api"
+
+    forwarded_values {
+      query_string = true
+      headers      = ["*"]
+
+      cookies {
+        forward = "all"
+      }
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 0
+    max_ttl                = 0
+  }
+
+  # Health check behavior - proxy to App Platform
+  ordered_cache_behavior {
+    path_pattern     = "/healthz"
+    allowed_methods  = ["GET", "HEAD"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "app-platform-api"
+
+    forwarded_values {
+      query_string = false
+
+      cookies {
+        forward = "none"
+      }
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 0
+    max_ttl                = 0
+  }
+
+  # DB status behavior - proxy to App Platform
+  ordered_cache_behavior {
+    path_pattern     = "/db/status"
+    allowed_methods  = ["GET", "HEAD"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "app-platform-api"
+
+    forwarded_values {
+      query_string = false
+
+      cookies {
+        forward = "none"
+      }
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 0
+    max_ttl                = 0
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+
+  tags = {
+    Name  = "poc-app-platform-aws-cloudfront"
+    Owner = "jkeegan"
+  }
+}
+
+# Data source for DigitalOcean domain
+data "digitalocean_domain" "main" {
+  name = "digitalocean.solutions"
+}
+
+# CNAME record pointing to CloudFront
+resource "digitalocean_record" "cloudfront_cname" {
+  domain = data.digitalocean_domain.main.id
+  type   = "CNAME"
+  name   = "poc-app-platform-aws"
+  value  = "${aws_cloudfront_distribution.main.domain_name}."
+  ttl    = 300
+}
+
+# Output CloudFront information
+output "cloudfront_domain_name" {
+  description = "CloudFront distribution domain name"
+  value       = aws_cloudfront_distribution.main.domain_name
+}
+
+output "cloudfront_hosted_zone_id" {
+  description = "CloudFront distribution hosted zone ID"
+  value       = aws_cloudfront_distribution.main.hosted_zone_id
+}
+
+output "custom_domain_url" {
+  description = "Custom domain URL for the application"
+  value       = "https://poc-app-platform-aws.digitalocean.solutions"
+}
+
+output "waf_web_acl_arn" {
+  description = "WAF WebACL ARN"
+  value       = aws_wafv2_web_acl.main.arn
 }

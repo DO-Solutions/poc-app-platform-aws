@@ -1,4 +1,7 @@
-const API_URL = 'https://poc-app-platform-aws-defua.ondigitalocean.app';
+// Determine API URL based on current domain
+const API_URL = window.location.hostname === 'poc-app-platform-aws.digitalocean.solutions' 
+    ? 'https://poc-app-platform-aws.digitalocean.solutions'
+    : 'https://poc-app-platform-aws-defua.ondigitalocean.app';
 
 document.addEventListener('DOMContentLoaded', () => {
     fetch(`${API_URL}/db/status`)

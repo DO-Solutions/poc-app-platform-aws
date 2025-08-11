@@ -27,6 +27,9 @@ The project follows a phased implementation approach as outlined in `DEV.md`, in
 - `make destroy` - Destroy all Terraform-managed resources
 - `make deploy` - Full deployment pipeline (login, build, push, apply)
 
+### Credentials
+This is a development environment, so its OK to use the make commands to make anything except destroy. The credentials needed to interact with the dev environment can be found in scratch/env.sh.
+
 ### Running the Application Locally
 ```bash
 cd app
