@@ -26,6 +26,10 @@ Integrate AWS WAF with CloudFront to provide a secure CDN layer in front of both
 - [x] Update CORS configuration to allow requests from CloudFront domain
 - [x] Update Makefile with any new deployment commands needed for Phase 3
 - [x] Test and validate that traffic flows CloudFront -> WAF -> App Platform/Spaces
+- [x] Create AWS ACM certificate for poc-app-platform-aws.digitalocean.solutions with DNS validation
+- [x] Create DNS validation records in DigitalOcean for ACM certificate
+- [x] Update CloudFront distribution to use ACM certificate for custom domain
+- [x] Test https://poc-app-platform-aws.digitalocean.solutions/ serves frontend and API correctly
 
 ## Key Components
 
@@ -75,11 +79,12 @@ Integrate AWS WAF with CloudFront to provide a secure CDN layer in front of both
 ### Deployed Infrastructure
 - **AWS WAF WebACL**: `arn:aws:wafv2:us-east-1:302041564412:global/webacl/poc-app-platform-aws-waf/290aca81-ac8a-45f6-aec9-a32d7254bb84`
 - **CloudFront Distribution**: `dgmcaiyp99fmj.cloudfront.net`
+- **ACM SSL Certificate**: `arn:aws:acm:us-east-1:302041564412:certificate/88d0d6cf-b492-4075-96a2-fad6e86e882e`
 - **DNS CNAME**: `poc-app-platform-aws.digitalocean.solutions` → CloudFront
-- **Working URLs**:
-  - Static Assets: `https://dgmcaiyp99fmj.cloudfront.net/`
-  - Health Check: `https://dgmcaiyp99fmj.cloudfront.net/healthz`
-  - DB Status: `https://dgmcaiyp99fmj.cloudfront.net/db/status`
+- **Custom Domain URLs** (SSL Enabled):
+  - Frontend: `https://poc-app-platform-aws.digitalocean.solutions/`
+  - Health Check: `https://poc-app-platform-aws.digitalocean.solutions/healthz`
+  - DB Status: `https://poc-app-platform-aws.digitalocean.solutions/db/status`
 
 ### Validation Results
 - ✅ WAF WebACL created with rate limiting (2000 req/5min)
@@ -89,8 +94,25 @@ Integrate AWS WAF with CloudFront to provide a secure CDN layer in front of both
 - ✅ `/db/status` returns PostgreSQL and Valkey connection status
 - ✅ Traffic flows: Client → CloudFront → WAF → Origin (App Platform/Spaces)
 - ✅ CNAME record created for custom domain
+- ✅ **SSL Certificate working**: Custom domain accessible via HTTPS
+- ✅ **Frontend application working**: `https://poc-app-platform-aws.digitalocean.solutions/`
+- ✅ **API endpoints working**: Health check and DB status via custom domain
 
-### Notes
-- Custom domain (`poc-app-platform-aws.digitalocean.solutions`) requires SSL certificate configuration for HTTPS access
-- All core functionality working via CloudFront domain
-- WAF protection active and filtering traffic
+### Architecture Flow
+```
+User Request → https://poc-app-platform-aws.digitalocean.solutions/
+     ↓
+DNS Resolution → CloudFront (dgmcaiyp99fmj.cloudfront.net)
+     ↓
+AWS WAF (Rate Limiting + Security Rules)
+     ↓
+CloudFront Cache Behaviors:
+  - Static Assets (/, *.html, *.js, *.css) → Spaces Bucket
+  - API Endpoints (/healthz, /db/status) → App Platform
+```
+
+### Cost Impact
+- **Free**: AWS ACM Certificate (no cost for CloudFront usage)
+- **Free**: DNS validation records
+- **Paid**: CloudFront data transfer and requests (standard AWS pricing)
+- **Paid**: WAF WebACL requests (standard AWS pricing)

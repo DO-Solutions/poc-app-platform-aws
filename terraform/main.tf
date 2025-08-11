@@ -445,8 +445,12 @@ resource "aws_cloudfront_distribution" "main" {
     }
   }
 
+  aliases = ["poc-app-platform-aws.digitalocean.solutions"]
+
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn      = aws_acm_certificate_validation.main.certificate_arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 
   tags = {
@@ -458,6 +462,52 @@ resource "aws_cloudfront_distribution" "main" {
 # Data source for DigitalOcean domain
 data "digitalocean_domain" "main" {
   name = "digitalocean.solutions"
+}
+
+# ACM Certificate for custom domain (must be in us-east-1 for CloudFront)
+resource "aws_acm_certificate" "main" {
+  provider = aws.us_east_1
+  
+  domain_name       = "poc-app-platform-aws.digitalocean.solutions"
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = {
+    Name  = "poc-app-platform-aws-cert"
+    Owner = "jkeegan"
+  }
+}
+
+# DNS validation records for ACM certificate
+resource "digitalocean_record" "cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.main.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  domain = data.digitalocean_domain.main.id
+  type   = each.value.type
+  name   = trimsuffix(each.value.name, ".digitalocean.solutions.")
+  value  = each.value.record
+  ttl    = 300
+}
+
+# Certificate validation
+resource "aws_acm_certificate_validation" "main" {
+  provider = aws.us_east_1
+  
+  certificate_arn         = aws_acm_certificate.main.arn
+  validation_record_fqdns = [for record in digitalocean_record.cert_validation : record.fqdn]
+
+  timeouts {
+    create = "5m"
+  }
 }
 
 # CNAME record pointing to CloudFront
@@ -488,4 +538,14 @@ output "custom_domain_url" {
 output "waf_web_acl_arn" {
   description = "WAF WebACL ARN"
   value       = aws_wafv2_web_acl.main.arn
+}
+
+output "acm_certificate_arn" {
+  description = "ACM Certificate ARN"
+  value       = aws_acm_certificate.main.arn
+}
+
+output "certificate_status" {
+  description = "ACM Certificate validation status"
+  value       = aws_acm_certificate_validation.main.certificate_arn
 }
