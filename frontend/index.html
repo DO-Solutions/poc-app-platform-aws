@@ -8,20 +8,33 @@
 </head>
 <body>
     <h1>Service Status Dashboard</h1>
-    <div class="status-container">
-        <div class="service">
-            <h2>PostgreSQL</h2>
-            <div id="postgres-status" class="status-badge">-</div>
-        </div>
-        <div class="service">
-            <h2>Valkey</h2>
-            <div id="valkey-status" class="status-badge">-</div>
-        </div>
-        <div class="service">
-            <h2>AWS IAM Roles Anywhere</h2>
-            <div id="iam-status" class="status-badge">CHECKING...</div>
-            <div id="iam-details" class="status-details"></div>
-        </div>
+    <div class="status-table-container">
+        <table class="status-table">
+            <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>Status</th>
+                    <th>Endpoint / FQDN</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>PostgreSQL</td>
+                    <td><span id="postgres-status" class="status-badge">CHECKING...</span></td>
+                    <td><span id="postgres-endpoint" class="endpoint-text">-</span></td>
+                </tr>
+                <tr>
+                    <td>Valkey</td>
+                    <td><span id="valkey-status" class="status-badge">CHECKING...</span></td>
+                    <td><span id="valkey-endpoint" class="endpoint-text">-</span></td>
+                </tr>
+                <tr>
+                    <td>AWS IAM Roles Anywhere</td>
+                    <td><span id="iam-status" class="status-badge">CHECKING...</span></td>
+                    <td><span id="iam-endpoint" class="endpoint-text">-</span></td>
+                </tr>
+            </tbody>
+        </table>
     </div>
     <script src="app.js"></script>
 </body>

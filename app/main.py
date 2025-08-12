@@ -52,8 +52,8 @@ def healthz():
 
 @app.get("/db/status")
 def db_status():
-    pg_status = {"connected": False, "writable": False, "readable": False}
-    valkey_status = {"connected": False, "ping_ok": False, "set_get_ok": False}
+    pg_status = {"connected": False, "writable": False, "readable": False, "host": os.environ.get('PGHOST', 'unknown')}
+    valkey_status = {"connected": False, "ping_ok": False, "set_get_ok": False, "host": os.environ.get('VALKEY_HOST', 'unknown')}
 
     # Test PostgreSQL
     try:

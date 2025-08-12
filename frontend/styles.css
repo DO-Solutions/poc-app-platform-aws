@@ -1,25 +1,62 @@
 body {
-    font-family: sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-top: 50px;
+    margin: 40px 20px;
+    background-color: #f8f9fa;
 }
 
-.status-container {
-    display: flex;
-    gap: 40px;
+h1 {
+    color: #333;
+    margin-bottom: 30px;
 }
 
-.service {
-    text-align: center;
+.status-table-container {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    min-width: 700px;
+}
+
+.status-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.status-table th {
+    background-color: #495057;
+    color: white;
+    padding: 16px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.status-table td {
+    padding: 16px;
+    border-bottom: 1px solid #dee2e6;
+    vertical-align: middle;
+}
+
+.status-table tr:last-child td {
+    border-bottom: none;
+}
+
+.status-table tr:hover {
+    background-color: #f8f9fa;
 }
 
 .status-badge {
-    padding: 10px 20px;
-    border-radius: 5px;
+    padding: 6px 12px;
+    border-radius: 4px;
     color: white;
-    font-weight: bold;
+    font-weight: 600;
+    font-size: 12px;
+    min-width: 60px;
+    display: inline-block;
+    text-align: center;
 }
 
 .ok {
@@ -30,11 +67,10 @@ body {
     background-color: #dc3545;
 }
 
-.status-details {
-    margin-top: 10px;
-    font-size: 12px;
-    color: #666;
-    max-width: 200px;
-    word-wrap: break-word;
+.endpoint-text {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    color: #495057;
+    word-break: break-all;
     line-height: 1.4;
 }
