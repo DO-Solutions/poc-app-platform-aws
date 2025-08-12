@@ -1,133 +1,108 @@
-terraform {
-  required_providers {
-    digitalocean = {
-      source  = "digitalocean/digitalocean"
-      version = "~> 2.0"
-    }
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-    tls = {
-      source  = "hashicorp/tls"
-      version = "~> 4.0"
-    }
+# PoC App Platform AWS Integration - Main Infrastructure
+# This file defines the core infrastructure resources for demonstrating
+# DigitalOcean App Platform integration with AWS services
+
+# =============================================================================
+# LOCAL VALUES FOR DYNAMIC DEFAULTS
+# =============================================================================
+
+# Local values to provide dynamic defaults based on the owner variable
+# This ensures consistent naming and tagging across all resources
+locals {
+  # Use provided values or default to owner-based values
+  project_name = var.do_project_name != null ? var.do_project_name : var.owner
+  tags         = var.do_tags != null ? var.do_tags : [var.owner]
+  
+  # Common tags for AWS resources
+  aws_tags = {
+    Owner = var.owner
   }
 }
 
-# AWS Provider for us-east-1 (required for CloudFront WAF)
-provider "aws" {
-  alias  = "us_east_1"
-  region = "us-east-1"
-  default_tags {
-    tags = {
-      Owner = "jkeegan"
-    }
-  }
-}
+# =============================================================================
+# DIGITALOCEAN CORE INFRASTRUCTURE
+# =============================================================================
 
-# AWS Provider for us-west-2 (primary region)
-provider "aws" {
-  region = "us-west-2"
-  default_tags {
-    tags = {
-      Owner = "jkeegan"
-    }
-  }
-}
-
-variable "do_region" {
-  description = "DigitalOcean region for deployment"
-  type        = string
-  default     = "sfo3"
-}
-
-variable "do_tags" {
-  description = "Tags to apply to DigitalOcean resources"
-  type        = list(string)
-  default     = ["jkeegan"]
-}
-
-variable "do_project_name" {
-  description = "DigitalOcean project name for deployment"
-  type        = string
-  default     = "jkeegan"
-}
-
-variable "image_tag" {
-  description = "The tag for the container image"
-  type        = string
-  default     = "latest"
-}
-
-variable "aws_access_key_id" {
-  description = "AWS Access Key ID for Secrets Manager access"
-  type        = string
-  sensitive   = true
-}
-
-variable "aws_secret_access_key" {
-  description = "AWS Secret Access Key for Secrets Manager access"
-  type        = string
-  sensitive   = true
-}
-
+# DigitalOcean Project - Logical container for all PoC resources
+# Provides resource organization, team access control, and billing separation
 resource "digitalocean_project" "poc" {
-  name        = var.do_project_name
+  name        = local.project_name
   description = "Project for poc-app-platform-aws resources"
   purpose     = "Web Application"
   environment = "Development"
 }
 
+# =============================================================================
+# DIGITALOCEAN MANAGED DATABASES
+# =============================================================================
 
+# PostgreSQL Database Cluster
+# Provides relational database services with automated backups, monitoring, and SSL
+# Used for application data storage and demonstrating database connectivity testing
 resource "digitalocean_database_cluster" "postgres" {
   name       = "poc-app-platform-aws-postgres-db"
   engine     = "pg"
-  version    = "17"
-  size       = "db-s-1vcpu-1gb"
+  version    = "17"                    # Latest PostgreSQL version for performance and features
+  size       = "db-s-1vcpu-1gb"       # Minimal size for PoC cost optimization
   region     = var.do_region
-  node_count = 1
-  tags       = var.do_tags
+  node_count = 1                      # Single node for development/testing
+  tags       = local.tags
   project_id = digitalocean_project.poc.id
 }
 
+# Valkey Database Cluster (Redis-compatible)
+# Provides in-memory caching and real-time data storage
+# Used for worker timestamp tracking and demonstrating Redis protocol compatibility
 resource "digitalocean_database_cluster" "valkey" {
   name       = "poc-app-platform-aws-valkey-db"
   engine     = "valkey"
-  version    = "8"
-  size       = "db-s-1vcpu-1gb"
+  version    = "8"                    # Latest Valkey version for Redis compatibility
+  size       = "db-s-1vcpu-1gb"      # Minimal size for PoC cost optimization
   region     = var.do_region
-  node_count = 1
-  tags       = var.do_tags
+  node_count = 1                     # Single node for development/testing
+  tags       = local.tags
   project_id = digitalocean_project.poc.id
 }
 
+# =============================================================================
+# DIGITALOCEAN SPACES (OBJECT STORAGE)
+# =============================================================================
+
+# Spaces Bucket for Frontend Static Assets
+# Provides S3-compatible object storage for HTML, CSS, and JavaScript files
+# Configured with public-read ACL for direct web access
 resource "digitalocean_spaces_bucket" "frontend" {
   name   = "poc-app-platform-aws-frontend-space"
   region = var.do_region
-  acl    = "public-read"
-
+  acl    = "public-read"              # Enables direct public access to frontend files
 }
 
+# CORS Configuration for Frontend Bucket
+# Enables cross-origin requests from the custom domain to the Spaces-hosted frontend
+# Required for API calls from the frontend to the App Platform backend
 resource "digitalocean_spaces_bucket_cors_configuration" "frontend_cors" {
   bucket = digitalocean_spaces_bucket.frontend.name
   region = var.do_region
 
   cors_rule {
-    allowed_headers = ["*"]
-    allowed_methods = ["GET"]
-    allowed_origins = ["*"]
+    allowed_headers = ["*"]           # Accept all headers for flexibility
+    allowed_methods = ["GET"]         # Only GET requests needed for static assets
+    allowed_origins = ["*"]           # Allow all origins for public frontend
   }
 }
+
+# Frontend Static Files Upload
+# Automatically uploads and manages frontend assets with proper MIME types
+# Uses file MD5 hashes to trigger updates only when content changes
 
 resource "digitalocean_spaces_bucket_object" "index" {
   bucket       = digitalocean_spaces_bucket.frontend.name
   key          = "index.html"
   source       = "../frontend/index.html"
   acl          = "public-read"
-  content_type = "text/html"
+  content_type = "text/html"          # Ensures browsers render as HTML
   region       = var.do_region
-  etag         = filemd5("../frontend/index.html")
+  etag         = filemd5("../frontend/index.html")  # Triggers update on file changes
 }
 
 resource "digitalocean_spaces_bucket_object" "styles" {
@@ -135,7 +110,7 @@ resource "digitalocean_spaces_bucket_object" "styles" {
   key          = "styles.css"
   source       = "../frontend/styles.css"
   acl          = "public-read"
-  content_type = "text/css"
+  content_type = "text/css"           # Enables proper CSS rendering
   region       = var.do_region
   etag         = filemd5("../frontend/styles.css")
 }
@@ -145,11 +120,13 @@ resource "digitalocean_spaces_bucket_object" "app_js" {
   key          = "app.js"
   source       = "../frontend/app.js"
   acl          = "public-read"
-  content_type = "application/javascript"
+  content_type = "application/javascript"  # Enables JavaScript execution
   region       = var.do_region
   etag         = filemd5("../frontend/app.js")
 }
 
+# Project Resource Association
+# Links the Spaces bucket to the DigitalOcean project for organization
 resource "digitalocean_project_resources" "poc" {
   project = digitalocean_project.poc.id
   resources = [
@@ -157,39 +134,54 @@ resource "digitalocean_project_resources" "poc" {
   ]
 }
 
+# =============================================================================
+# DIGITALOCEAN APP PLATFORM
+# =============================================================================
 
+# App Platform Application
+# Deploys containerized application with both API service and worker components
+# Automatically connects to managed databases and configures environment variables
 resource "digitalocean_app" "poc_app" {
   project_id = digitalocean_project.poc.id
+  
   spec {
     name   = "poc-app-platform-aws"
     region = var.do_region
 
+    # Main API Service
+    # Runs the FastAPI application serving REST endpoints
+    # Configured with health checks and automatic database connections
     service {
       name               = "api-svc"
-      instance_count     = 1
-      instance_size_slug = "apps-s-1vcpu-1gb"
+      instance_count     = 1                    # Single instance for PoC
+      instance_size_slug = "apps-s-1vcpu-1gb"  # Minimal size for cost optimization
 
+      # Container image configuration
       image {
-        registry_type = "DOCR"
+        registry_type = "DOCR"                  # DigitalOcean Container Registry
         repository    = "poc-app-platform-aws"
-        tag           = var.image_tag
+        tag           = var.image_tag           # Allows dynamic image updates
       }
 
-      http_port = 8080
+      http_port = 8080                          # Port exposed by FastAPI application
 
+      # Health check configuration for load balancer
       health_check {
-        http_path = "/healthz"
+        http_path = "/healthz"                  # Endpoint implemented in FastAPI
         port      = 8080
       }
 
-      # Environment variables are derived from the attached databases
-      # and the frontend Spaces bucket.
+      # CORS Configuration
+      # Allows frontend hosted on Spaces to call API endpoints
       env {
         key   = "API_CORS_ORIGINS"
         value = "https://${digitalocean_spaces_bucket.frontend.bucket_domain_name},https://poc-app-platform-aws.digitalocean.solutions"
         scope = "RUN_TIME"
         type  = "GENERAL"
       }
+
+      # PostgreSQL Database Connection Variables
+      # Automatically injected by App Platform when database is attached
       env {
         key   = "PGHOST"
         value = digitalocean_database_cluster.postgres.host
@@ -218,14 +210,17 @@ resource "digitalocean_app" "poc_app" {
         key   = "PGPASSWORD"
         value = digitalocean_database_cluster.postgres.password
         scope = "RUN_TIME"
-        type  = "SECRET"
+        type  = "SECRET"                        # Encrypted in App Platform
       }
       env {
         key   = "PGSSLMODE"
-        value = "require"
+        value = "require"                       # Enforces SSL connection
         scope = "RUN_TIME"
         type  = "GENERAL"
       }
+
+      # Valkey Database Connection Variables
+      # Provides Redis-compatible caching layer
       env {
         key   = "VALKEY_HOST"
         value = digitalocean_database_cluster.valkey.host
@@ -245,35 +240,32 @@ resource "digitalocean_app" "poc_app" {
         type  = "SECRET"
       }
 
-      # Phase 4: IAM Roles Anywhere environment variables
+      # AWS IAM Roles Anywhere Configuration
+      # Provides certificate-based AWS authentication
       env {
         key   = "IAM_CLIENT_CERT"
         value = base64encode(tls_locally_signed_cert.client.cert_pem)
         scope = "RUN_TIME"
-        type  = "SECRET"
+        type  = "SECRET"                        # X.509 client certificate
       }
-
       env {
         key   = "IAM_CLIENT_KEY"
         value = base64encode(tls_private_key.client.private_key_pem)
         scope = "RUN_TIME"
-        type  = "SECRET"
+        type  = "SECRET"                        # Private key for client certificate
       }
-
       env {
         key   = "IAM_TRUST_ANCHOR_ARN"
         value = aws_rolesanywhere_trust_anchor.main.arn
         scope = "RUN_TIME"
         type  = "GENERAL"
       }
-
       env {
         key   = "IAM_PROFILE_ARN"
         value = aws_rolesanywhere_profile.main.arn
         scope = "RUN_TIME"
         type  = "GENERAL"
       }
-
       env {
         key   = "IAM_ROLE_ARN"
         value = aws_iam_role.app_role.arn
@@ -281,20 +273,19 @@ resource "digitalocean_app" "poc_app" {
         type  = "GENERAL"
       }
 
+      # AWS Service Configuration
       env {
         key   = "AWS_REGION"
-        value = "us-west-2"
+        value = "us-west-2"                     # Primary AWS region for services
         scope = "RUN_TIME"
         type  = "GENERAL"
       }
-
       env {
         key   = "AWS_ACCESS_KEY_ID"
         value = var.aws_access_key_id
         scope = "RUN_TIME"
-        type  = "SECRET"
+        type  = "SECRET"                        # Fallback AWS credentials
       }
-
       env {
         key   = "AWS_SECRET_ACCESS_KEY"
         value = var.aws_secret_access_key
@@ -303,21 +294,28 @@ resource "digitalocean_app" "poc_app" {
       }
     }
 
-    # Phase 6: Worker service for continuous data updates
+    # Worker Service for Continuous Data Updates
+    # Runs background timestamp updates every 60 seconds
+    # Demonstrates real-time integration across all services
     worker {
       name               = "timestamp-worker"
-      instance_count     = 1
-      instance_size_slug = "apps-s-1vcpu-0.5gb"
+      instance_count     = 1                    # Single worker instance
+      instance_size_slug = "apps-s-1vcpu-0.5gb" # Smaller size for background task
 
+      # Uses same container image with different command
       image {
         registry_type = "DOCR"
         repository    = "poc-app-platform-aws"
         tag           = var.image_tag
       }
 
-      run_command = "python worker.py"
+      run_command = "python worker.py"          # Starts worker instead of API
 
-      # Share same environment variables as main service
+      # Worker Environment Variables
+      # Shares same database and AWS configuration as API service
+      # This ensures consistent connectivity across both components
+
+      # PostgreSQL connection for timestamp tracking
       env {
         key   = "PGHOST"
         value = digitalocean_database_cluster.postgres.host
@@ -354,6 +352,8 @@ resource "digitalocean_app" "poc_app" {
         scope = "RUN_TIME"
         type  = "GENERAL"
       }
+
+      # Valkey connection for real-time timestamp updates
       env {
         key   = "VALKEY_HOST"
         value = digitalocean_database_cluster.valkey.host
@@ -372,6 +372,8 @@ resource "digitalocean_app" "poc_app" {
         scope = "RUN_TIME"
         type  = "SECRET"
       }
+
+      # AWS authentication for Secrets Manager updates
       env {
         key   = "IAM_CLIENT_CERT"
         value = base64encode(tls_locally_signed_cert.client.cert_pem)
@@ -422,73 +424,72 @@ resource "digitalocean_app" "poc_app" {
       }
     }
 
+    # Ingress Configuration
+    # Routes all HTTP traffic to the API service
     ingress {
       rule {
         match {
           path {
-            prefix = "/"
+            prefix = "/"                        # Catches all paths
           }
         }
         component {
-          name = "api-svc"
+          name = "api-svc"                      # Routes to main API service
         }
       }
     }
 
+    # Database Attachments
+    # Automatically configures connection pooling and environment variables
+    
     database {
       name         = "postgres"
       cluster_name = digitalocean_database_cluster.postgres.name
       engine       = "PG"
-      production   = true
+      production   = true                       # Enables connection pooling
     }
 
     database {
       name         = "valkey"
       cluster_name = digitalocean_database_cluster.valkey.name
       engine       = "VALKEY"
-      production   = true
+      production   = true                       # Enables connection pooling
     }
   }
 }
 
-output "app_url" {
-  description = "The live URL of the deployed application"
-  value       = digitalocean_app.poc_app.live_url
-}
+# =============================================================================
+# AWS CLOUDFRONT AND WAF (CONTENT DELIVERY AND SECURITY)
+# =============================================================================
 
-output "frontend_url" {
-  description = "The public URL of the frontend"
-  value       = "https://${digitalocean_spaces_bucket.frontend.bucket_domain_name}/index.html"
-}
-
-output "frontend_bucket_name" {
-  description = "The name of the frontend Spaces bucket"
-  value       = digitalocean_spaces_bucket.frontend.name
-}
-
-# AWS WAF WebACL (must be in us-east-1 for CloudFront)
+# AWS WAF WebACL for CloudFront Protection
+# Provides DDoS protection and rate limiting for the application
+# Must be created in us-east-1 region for CloudFront compatibility
 resource "aws_wafv2_web_acl" "main" {
   provider = aws.us_east_1
   
   name  = "poc-app-platform-aws-waf"
-  scope = "CLOUDFRONT"
+  scope = "CLOUDFRONT"                          # Specifically for CloudFront distributions
 
+  # Default action allows all traffic not matched by rules
   default_action {
     allow {}
   }
 
-  # Rate limiting rule
+  # Rate limiting rule to prevent abuse
+  # Blocks IPs making more than 2000 requests in 5-minute window
   rule {
     name     = "RateLimitRule"
     priority = 1
 
     statement {
       rate_based_statement {
-        limit              = 2000
-        aggregate_key_type = "IP"
+        limit              = 2000               # Requests per 5-minute window
+        aggregate_key_type = "IP"              # Rate limit per source IP
       }
     }
 
+    # CloudWatch integration for monitoring
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                 = "RateLimitRule"
@@ -496,27 +497,30 @@ resource "aws_wafv2_web_acl" "main" {
     }
 
     action {
-      block {}
+      block {}                                  # Block excessive requests
     }
   }
 
+  # WAF-wide visibility configuration
   visibility_config {
     cloudwatch_metrics_enabled = true
     metric_name                 = "poc-app-platform-aws-waf"
     sampled_requests_enabled    = true
   }
 
-  tags = {
-    Name  = "poc-app-platform-aws-waf"
-    Owner = "jkeegan"
-  }
+  tags = merge(local.aws_tags, {
+    Name = "poc-app-platform-aws-waf"
+  })
 }
 
 # CloudFront Distribution
+# Provides global CDN with custom domain, SSL, and routing to both origins
+# Routes API calls to App Platform and static assets to Spaces
 resource "aws_cloudfront_distribution" "main" {
   provider = aws.us_east_1
   
-  # App Platform API origin
+  # App Platform API origin configuration
+  # Proxies dynamic API requests to DigitalOcean App Platform
   origin {
     domain_name = "poc-app-platform-aws-defua.ondigitalocean.app"
     origin_id   = "app-platform-api"
@@ -524,12 +528,13 @@ resource "aws_cloudfront_distribution" "main" {
     custom_origin_config {
       http_port              = 80
       https_port             = 443
-      origin_protocol_policy = "https-only"
-      origin_ssl_protocols   = ["TLSv1.2"]
+      origin_protocol_policy = "https-only"    # Force HTTPS to App Platform
+      origin_ssl_protocols   = ["TLSv1.2"]     # Modern TLS only
     }
   }
 
-  # Spaces bucket origin
+  # DigitalOcean Spaces origin configuration
+  # Serves static frontend assets directly from object storage
   origin {
     domain_name = digitalocean_spaces_bucket.frontend.bucket_domain_name
     origin_id   = "spaces-bucket"
@@ -537,37 +542,39 @@ resource "aws_cloudfront_distribution" "main" {
     custom_origin_config {
       http_port              = 80
       https_port             = 443
-      origin_protocol_policy = "https-only"
+      origin_protocol_policy = "https-only"    # Force HTTPS to Spaces
       origin_ssl_protocols   = ["TLSv1.2"]
     }
   }
 
   enabled             = true
-  is_ipv6_enabled     = true
-  default_root_object = "index.html"
-  web_acl_id          = aws_wafv2_web_acl.main.arn
+  is_ipv6_enabled     = true                    # Support both IPv4 and IPv6
+  default_root_object = "index.html"           # Serve index.html for root requests
+  web_acl_id          = aws_wafv2_web_acl.main.arn  # Attach WAF protection
 
-  # Default behavior - serve static assets from Spaces
+  # Default behavior: serve static assets from Spaces
+  # This handles the main website content (HTML, CSS, JS)
   default_cache_behavior {
     allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods   = ["GET", "HEAD"]
+    cached_methods   = ["GET", "HEAD"]           # Only cache read operations
     target_origin_id = "spaces-bucket"
 
     forwarded_values {
-      query_string = false
+      query_string = false                      # Don't forward query strings to static assets
 
       cookies {
-        forward = "none"
+        forward = "none"                        # Don't forward cookies to static assets
       }
     }
 
-    viewer_protocol_policy = "redirect-to-https"
+    viewer_protocol_policy = "redirect-to-https" # Force HTTPS for security
     min_ttl                = 0
-    default_ttl            = 3600
-    max_ttl                = 86400
+    default_ttl            = 3600               # Cache static assets for 1 hour
+    max_ttl                = 86400              # Maximum cache time 24 hours
   }
 
-  # API behavior - proxy to App Platform
+  # API behavior: proxy to App Platform with no caching
+  # Handles all /api/* requests with full header forwarding
   ordered_cache_behavior {
     path_pattern     = "/api/*"
     allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
@@ -575,21 +582,22 @@ resource "aws_cloudfront_distribution" "main" {
     target_origin_id = "app-platform-api"
 
     forwarded_values {
-      query_string = true
-      headers      = ["*"]
+      query_string = true                       # Forward query parameters
+      headers      = ["*"]                      # Forward all headers
 
       cookies {
-        forward = "all"
+        forward = "all"                         # Forward all cookies
       }
     }
 
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
-    default_ttl            = 0
+    default_ttl            = 0                  # No caching for API responses
     max_ttl                = 0
   }
 
-  # Health check behavior - proxy to App Platform
+  # Health check behavior: proxy to App Platform
+  # Routes health checks directly to the application
   ordered_cache_behavior {
     path_pattern     = "/healthz"
     allowed_methods  = ["GET", "HEAD"]
@@ -606,11 +614,12 @@ resource "aws_cloudfront_distribution" "main" {
 
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
-    default_ttl            = 0
+    default_ttl            = 0                  # No caching for health checks
     max_ttl                = 0
   }
 
-  # DB status behavior - proxy to App Platform (no caching)
+  # Database status behavior: proxy to App Platform with no caching
+  # Real-time database connectivity information
   ordered_cache_behavior {
     path_pattern     = "/db/status"
     allowed_methods  = ["GET", "HEAD"]
@@ -628,11 +637,12 @@ resource "aws_cloudfront_distribution" "main" {
 
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
-    default_ttl            = 0
+    default_ttl            = 0                  # Real-time status data
     max_ttl                = 0
   }
 
-  # IAM status behavior - proxy to App Platform (no caching)
+  # IAM status behavior: proxy to App Platform with no caching
+  # Real-time AWS authentication status
   ordered_cache_behavior {
     path_pattern     = "/iam/status"
     allowed_methods  = ["GET", "HEAD"]
@@ -650,11 +660,12 @@ resource "aws_cloudfront_distribution" "main" {
 
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
-    default_ttl            = 0
+    default_ttl            = 0                  # Real-time authentication data
     max_ttl                = 0
   }
 
-  # Secrets Manager status behavior - proxy to App Platform (no caching)
+  # Secrets Manager status behavior: proxy to App Platform with no caching
+  # Real-time AWS Secrets Manager connectivity
   ordered_cache_behavior {
     path_pattern     = "/secret/status"
     allowed_methods  = ["GET", "HEAD"]
@@ -672,53 +683,64 @@ resource "aws_cloudfront_distribution" "main" {
 
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
-    default_ttl            = 0
+    default_ttl            = 0                  # Real-time secrets data
     max_ttl                = 0
   }
 
+  # Geographic restrictions (none for global access)
   restrictions {
     geo_restriction {
       restriction_type = "none"
     }
   }
 
+  # Custom domain configuration
   aliases = ["poc-app-platform-aws.digitalocean.solutions"]
 
+  # SSL certificate configuration
   viewer_certificate {
     acm_certificate_arn      = aws_acm_certificate_validation.main.certificate_arn
-    ssl_support_method       = "sni-only"
-    minimum_protocol_version = "TLSv1.2_2021"
+    ssl_support_method       = "sni-only"      # Server Name Indication for cost optimization
+    minimum_protocol_version = "TLSv1.2_2021" # Modern TLS for security
   }
 
-  tags = {
-    Name  = "poc-app-platform-aws-cloudfront"
-    Owner = "jkeegan"
-  }
+  tags = merge(local.aws_tags, {
+    Name = "poc-app-platform-aws-cloudfront"
+  })
 }
 
-# Data source for DigitalOcean domain
+# =============================================================================
+# DNS AND SSL CERTIFICATE MANAGEMENT
+# =============================================================================
+
+# Data source for existing DigitalOcean domain
+# References the pre-existing digitalocean.solutions domain
 data "digitalocean_domain" "main" {
   name = "digitalocean.solutions"
 }
 
-# ACM Certificate for custom domain (must be in us-east-1 for CloudFront)
+# ACM Certificate for custom domain
+# Provides SSL/TLS certificate for CloudFront distribution
+# Must be created in us-east-1 region for CloudFront compatibility
 resource "aws_acm_certificate" "main" {
   provider = aws.us_east_1
   
   domain_name       = "poc-app-platform-aws.digitalocean.solutions"
-  validation_method = "DNS"
+  validation_method = "DNS"                     # DNS validation for automation
 
+  # Ensures certificate is renewed before expiration
   lifecycle {
     create_before_destroy = true
   }
 
-  tags = {
-    Name  = "poc-app-platform-aws-cert"
-    Owner = "jkeegan"
-  }
+  tags = merge(local.aws_tags, {
+    Name = "poc-app-platform-aws-cert"
+  })
 }
 
 # DNS validation records for ACM certificate
+# Creates DNS records in DigitalOcean to validate certificate ownership
+# Uses for_each to handle multiple validation records if needed
 resource "digitalocean_record" "cert_validation" {
   for_each = {
     for dvo in aws_acm_certificate.main.domain_validation_options : dvo.domain_name => {
@@ -730,12 +752,13 @@ resource "digitalocean_record" "cert_validation" {
 
   domain = data.digitalocean_domain.main.id
   type   = each.value.type
-  name   = trimsuffix(each.value.name, ".digitalocean.solutions.")
+  name   = trimsuffix(each.value.name, ".digitalocean.solutions.")  # Remove domain suffix
   value  = each.value.record
-  ttl    = 300
+  ttl    = 300                                  # Short TTL for validation
 }
 
-# Certificate validation
+# Certificate validation resource
+# Waits for DNS validation to complete before proceeding
 resource "aws_acm_certificate_validation" "main" {
   provider = aws.us_east_1
   
@@ -743,59 +766,35 @@ resource "aws_acm_certificate_validation" "main" {
   validation_record_fqdns = [for record in digitalocean_record.cert_validation : record.fqdn]
 
   timeouts {
-    create = "5m"
+    create = "5m"                               # Allow up to 5 minutes for validation
   }
 }
 
-# CNAME record pointing to CloudFront
+# CNAME record pointing custom domain to CloudFront
+# Routes traffic from poc-app-platform-aws.digitalocean.solutions to CloudFront
 resource "digitalocean_record" "cloudfront_cname" {
   domain = data.digitalocean_domain.main.id
   type   = "CNAME"
   name   = "poc-app-platform-aws"
   value  = "${aws_cloudfront_distribution.main.domain_name}."
-  ttl    = 300
+  ttl    = 300                                  # Short TTL for flexibility
 }
 
-# Output CloudFront information
-output "cloudfront_domain_name" {
-  description = "CloudFront distribution domain name"
-  value       = aws_cloudfront_distribution.main.domain_name
-}
+# =============================================================================
+# AWS IAM ROLES ANYWHERE - X.509 CERTIFICATE INFRASTRUCTURE
+# =============================================================================
 
-output "cloudfront_hosted_zone_id" {
-  description = "CloudFront distribution hosted zone ID"
-  value       = aws_cloudfront_distribution.main.hosted_zone_id
-}
-
-output "custom_domain_url" {
-  description = "Custom domain URL for the application"
-  value       = "https://poc-app-platform-aws.digitalocean.solutions"
-}
-
-output "waf_web_acl_arn" {
-  description = "WAF WebACL ARN"
-  value       = aws_wafv2_web_acl.main.arn
-}
-
-output "acm_certificate_arn" {
-  description = "ACM Certificate ARN"
-  value       = aws_acm_certificate.main.arn
-}
-
-output "certificate_status" {
-  description = "ACM Certificate validation status"
-  value       = aws_acm_certificate_validation.main.certificate_arn
-}
-
-# Phase 4: IAM Roles Anywhere - Certificate Infrastructure
-
-# CA private key
+# Certificate Authority (CA) Private Key
+# Root private key for signing client certificates
+# Used to establish trust chain for IAM Roles Anywhere
 resource "tls_private_key" "ca" {
   algorithm = "RSA"
-  rsa_bits  = 2048
+  rsa_bits  = 2048                              # Secure key length
 }
 
-# Self-signed CA certificate
+# Self-signed CA Certificate
+# Root certificate for the certificate authority
+# Establishes the trust anchor for IAM Roles Anywhere
 resource "tls_self_signed_cert" "ca" {
   private_key_pem = tls_private_key.ca.private_key_pem
   
@@ -804,50 +803,57 @@ resource "tls_self_signed_cert" "ca" {
     organization = "DigitalOcean Solutions"
   }
   
-  validity_period_hours = 8760 # 1 year
-  is_ca_certificate     = true
+  validity_period_hours = 8760                  # Valid for 1 year
+  is_ca_certificate     = true                  # Marks as CA certificate
   
   allowed_uses = [
-    "cert_signing",
+    "cert_signing",                             # Can sign other certificates
     "key_encipherment",
     "digital_signature",
   ]
 }
 
-# Client private key
+# Client Private Key
+# Private key for the application's client certificate
 resource "tls_private_key" "client" {
   algorithm = "RSA"
   rsa_bits  = 2048
 }
 
-# Client certificate request
+# Client Certificate Request
+# Certificate signing request for the application
 resource "tls_cert_request" "client" {
   private_key_pem = tls_private_key.client.private_key_pem
   
   subject {
-    common_name  = "poc-app-platform-aws-client"
+    common_name  = "poc-app-platform-aws-client"  # Must match IAM role condition
     organization = "DigitalOcean Solutions"
   }
 }
 
-# Client certificate signed by CA
+# Client Certificate signed by CA
+# Final client certificate for IAM Roles Anywhere authentication
 resource "tls_locally_signed_cert" "client" {
   cert_request_pem   = tls_cert_request.client.cert_request_pem
   ca_private_key_pem = tls_private_key.ca.private_key_pem
   ca_cert_pem        = tls_self_signed_cert.ca.cert_pem
   
-  validity_period_hours = 8760 # 1 year
+  validity_period_hours = 8760                  # Valid for 1 year
   
   allowed_uses = [
     "key_encipherment",
     "digital_signature",
-    "client_auth",
+    "client_auth",                              # Enables client authentication
   ]
 }
 
-# Phase 4: AWS IAM Roles Anywhere Setup
+# =============================================================================
+# AWS IAM ROLES ANYWHERE CONFIGURATION
+# =============================================================================
 
-# IAM Roles Anywhere trust anchor
+# IAM Roles Anywhere Trust Anchor
+# Links the CA certificate to AWS IAM for certificate-based authentication
+# Enables App Platform to assume AWS roles using X.509 certificates
 resource "aws_rolesanywhere_trust_anchor" "main" {
   name = "poc-app-platform-aws-trust-anchor"
   
@@ -858,13 +864,14 @@ resource "aws_rolesanywhere_trust_anchor" "main" {
     }
   }
   
-  tags = {
-    Name  = "poc-app-platform-aws-trust-anchor"
-    Owner = "jkeegan"
-  }
+  tags = merge(local.aws_tags, {
+    Name = "poc-app-platform-aws-trust-anchor"
+  })
 }
 
-# IAM role for the application
+# IAM Role for Application
+# Defines the AWS role that the application can assume
+# Includes trust policy for IAM Roles Anywhere with certificate validation
 resource "aws_iam_role" "app_role" {
   name = "poc-app-platform-aws-role"
   
@@ -879,6 +886,7 @@ resource "aws_iam_role" "app_role" {
         Action = "sts:AssumeRole"
         Condition = {
           StringEquals = {
+            # Validates the client certificate's Common Name
             "aws:PrincipalTag/x509Subject/CN" = "poc-app-platform-aws-client"
           }
         }
@@ -886,13 +894,14 @@ resource "aws_iam_role" "app_role" {
     ]
   })
   
-  tags = {
-    Name  = "poc-app-platform-aws-role"
-    Owner = "jkeegan"
-  }
+  tags = merge(local.aws_tags, {
+    Name = "poc-app-platform-aws-role"
+  })
 }
 
-# IAM policy for minimal permissions
+# IAM Policy for Application Permissions
+# Grants minimal required permissions for the PoC
+# Includes access to STS and Secrets Manager for demonstration
 resource "aws_iam_role_policy" "app_policy" {
   name = "poc-app-platform-aws-policy"
   role = aws_iam_role.app_role.id
@@ -903,16 +912,16 @@ resource "aws_iam_role_policy" "app_policy" {
       {
         Effect = "Allow"
         Action = [
-          "sts:GetCallerIdentity"
+          "sts:GetCallerIdentity"               # For authentication testing
         ]
         Resource = "*"
       },
       {
         Effect = "Allow"
         Action = [
-          "secretsmanager:GetSecretValue",
-          "secretsmanager:DescribeSecret",
-          "secretsmanager:UpdateSecret"
+          "secretsmanager:GetSecretValue",      # Read secret content
+          "secretsmanager:DescribeSecret",      # Get secret metadata
+          "secretsmanager:UpdateSecret"         # Update secret (for worker)
         ]
         Resource = aws_secretsmanager_secret.test_secret.arn
       }
@@ -920,12 +929,15 @@ resource "aws_iam_role_policy" "app_policy" {
   })
 }
 
-# IAM Roles Anywhere profile
+# IAM Roles Anywhere Profile
+# Links the IAM role to the trust anchor for role assumption
+# Includes session policy for additional access control
 resource "aws_rolesanywhere_profile" "main" {
   name = "poc-app-platform-aws-profile"
   
   role_arns = [aws_iam_role.app_role.arn]
   
+  # Session policy provides additional restrictions during role assumption
   session_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -939,26 +951,30 @@ resource "aws_rolesanywhere_profile" "main" {
     ]
   })
   
-  tags = {
-    Name  = "poc-app-platform-aws-profile"
-    Owner = "jkeegan"
-  }
+  tags = merge(local.aws_tags, {
+    Name = "poc-app-platform-aws-profile"
+  })
 }
 
-# Phase 5: AWS Secrets Manager Integration
+# =============================================================================
+# AWS SECRETS MANAGER
+# =============================================================================
 
-# AWS Secrets Manager secret
+# AWS Secrets Manager Secret
+# Stores test data for demonstrating secret retrieval and updates
+# Used by both API endpoints and worker for timestamp updates
 resource "aws_secretsmanager_secret" "test_secret" {
   name        = "poc-app-platform/test-secret"
   description = "Test secret for PoC App Platform AWS integration"
   
-  tags = {
-    Name  = "poc-app-platform-test-secret"
-    Owner = "jkeegan"
-  }
+  tags = merge(local.aws_tags, {
+    Name = "poc-app-platform-test-secret"
+  })
 }
 
-# Secret version with dummy content
+# Initial Secret Content
+# Provides baseline secret content with JSON structure
+# Will be updated by worker service with timestamps
 resource "aws_secretsmanager_secret_version" "test_secret" {
   secret_id = aws_secretsmanager_secret.test_secret.id
   secret_string = jsonencode({

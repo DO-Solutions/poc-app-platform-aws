@@ -1,0 +1,25 @@
+# Example Terraform Variables File
+# Copy this file to terraform.tfvars and customize the values
+
+# Owner identifier for resource naming and tagging
+# This value will be used for:
+# - DigitalOcean project name (unless do_project_name is specified)
+# - DigitalOcean resource tags (unless do_tags is specified)
+# - AWS resource Owner tags
+owner = "jkeegan"
+
+# DigitalOcean deployment region
+do_region = "sfo3"
+
+# Custom project name (optional - defaults to owner value)
+# do_project_name = "my-custom-project"
+
+# Custom DigitalOcean tags (optional - defaults to [owner])
+# do_tags = ["owner-tag", "environment-dev", "project-poc"]
+
+# Docker image tag for deployment
+image_tag = "latest"
+
+# AWS credentials for fallback authentication
+# aws_access_key_id = "your-access-key-here"
+# aws_secret_access_key = "your-secret-key-here"
