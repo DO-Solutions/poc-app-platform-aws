@@ -6,6 +6,8 @@ import base64
 import boto3
 import tempfile
 import subprocess
+import json
+from datetime import datetime, timezone
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -39,6 +41,13 @@ def startup_event():
         )
         cursor = conn.cursor()
         cursor.execute("CREATE TABLE IF NOT EXISTS test_data (id SERIAL PRIMARY KEY, message TEXT NOT NULL);")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS last_update (
+                source VARCHAR(50) PRIMARY KEY,
+                timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+                metadata JSONB
+            )
+        """)
         conn.commit()
         cursor.close()
         conn.close()
@@ -57,8 +66,8 @@ def db_status(response: Response):
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     
-    pg_status = {"connected": False, "writable": False, "readable": False, "host": os.environ.get('PGHOST', 'unknown')}
-    valkey_status = {"connected": False, "ping_ok": False, "set_get_ok": False, "host": os.environ.get('VALKEY_HOST', 'unknown')}
+    pg_status = {"connected": False, "writable": False, "readable": False, "host": os.environ.get('PGHOST', 'unknown'), "postgres_last_update": None}
+    valkey_status = {"connected": False, "ping_ok": False, "set_get_ok": False, "host": os.environ.get('VALKEY_HOST', 'unknown'), "valkey_last_update": None}
 
     # Test PostgreSQL
     try:
@@ -85,9 +94,18 @@ def db_status(response: Response):
         if message == 'hello':
             pg_status["readable"] = True
 
-        # Clean up
+        # Clean up test data
         cursor.execute("DELETE FROM test_data WHERE id = %s;", (inserted_id,))
         conn.commit()
+
+        # Get last worker update timestamp
+        try:
+            cursor.execute("SELECT timestamp FROM last_update WHERE source = %s;", ('worker',))
+            result = cursor.fetchone()
+            if result:
+                pg_status["postgres_last_update"] = result[0].isoformat()
+        except Exception as e:
+            logger.debug(f"Could not fetch last update timestamp: {e}")
 
         cursor.close()
         conn.close()
@@ -112,6 +130,14 @@ def db_status(response: Response):
         r.set('poc-test', 'success')
         if r.get('poc-test').decode('utf-8') == 'success':
             valkey_status["set_get_ok"] = True
+
+        # Get last worker update timestamp
+        try:
+            timestamp = r.get('worker:last_update')
+            if timestamp:
+                valkey_status["valkey_last_update"] = timestamp.decode('utf-8')
+        except Exception as e:
+            logger.debug(f"Could not fetch worker timestamp from Valkey: {e}")
 
     except Exception as e:
         logger.error(f"Valkey check failed: {e}")
@@ -277,12 +303,15 @@ def iam_status(response: Response):
     response.headers["Expires"] = "0"
     
     result = assume_role_with_certificate()
+    current_time = datetime.now(timezone.utc)
     
     return {
         "ok": result["success"],
         "role_arn": result.get("role_arn"),
         "account": result.get("account"),
         "user_id": result.get("user_id"),
+        "credentials_created": current_time.isoformat(),
+        "credentials_expiry": (current_time.replace(hour=current_time.hour + 1)).isoformat(),  # Mock 1-hour expiry
         "note": result.get("note"),
         "error": result.get("error")
     }
@@ -297,12 +326,83 @@ def secret_status(response: Response):
     
     result = get_secret_from_secrets_manager()
     
+    # Parse timestamp from JSON secret if available
+    secret_timestamp = None
+    if result.get("success") and result.get("secret_value"):
+        try:
+            secret_data = json.loads(result["secret_value"])
+            secret_timestamp = secret_data.get("updated_at")
+        except (json.JSONDecodeError, AttributeError):
+            # If secret is not JSON format, that's okay
+            pass
+    
     return {
         "ok": result["success"],
         "secret_value": result.get("secret_value"),
         "secret_name": result.get("secret_name"),
         "secret_arn": result.get("secret_arn"),
         "version_id": result.get("version_id"),
+        "secret_last_update": secret_timestamp,
         "note": result.get("note"),
         "error": result.get("error")
+    }
+
+@app.get("/worker/status")
+def worker_status(response: Response):
+    """Aggregated status of all worker timestamp updates"""
+    # Set headers to prevent caching
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    
+    current_time = datetime.now(timezone.utc)
+    stale_threshold = 90  # seconds
+    
+    # Get data from other endpoints
+    db_data = db_status(response)
+    secret_data = secret_status(response) 
+    iam_data = iam_status(response)
+    
+    def calculate_age(timestamp_str):
+        """Calculate age of timestamp in seconds"""
+        if not timestamp_str:
+            return None
+        try:
+            timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            return (current_time - timestamp).total_seconds()
+        except:
+            return None
+    
+    postgres_age = calculate_age(db_data["postgres"].get("postgres_last_update"))
+    valkey_age = calculate_age(db_data["valkey"].get("valkey_last_update"))
+    secret_age = calculate_age(secret_data.get("secret_last_update"))
+    
+    return {
+        "current_time": current_time.isoformat(),
+        "stale_threshold_seconds": stale_threshold,
+        "timestamps": {
+            "postgres": {
+                "last_update": db_data["postgres"].get("postgres_last_update"),
+                "age_seconds": postgres_age,
+                "is_stale": postgres_age is None or postgres_age > stale_threshold,
+                "status": "ok" if db_data["postgres"].get("connected") else "error"
+            },
+            "valkey": {
+                "last_update": db_data["valkey"].get("valkey_last_update"),
+                "age_seconds": valkey_age,
+                "is_stale": valkey_age is None or valkey_age > stale_threshold,
+                "status": "ok" if db_data["valkey"].get("connected") else "error"
+            },
+            "secrets_manager": {
+                "last_update": secret_data.get("secret_last_update"),
+                "age_seconds": secret_age,
+                "is_stale": secret_age is None or secret_age > stale_threshold,
+                "status": "ok" if secret_data.get("ok") else "error"
+            }
+        },
+        "overall_status": "ok" if all([
+            db_data["postgres"].get("connected"),
+            db_data["valkey"].get("connected"), 
+            secret_data.get("ok")
+        ]) else "error"
     }

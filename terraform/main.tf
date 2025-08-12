@@ -303,6 +303,125 @@ resource "digitalocean_app" "poc_app" {
       }
     }
 
+    # Phase 6: Worker service for continuous data updates
+    worker {
+      name               = "timestamp-worker"
+      instance_count     = 1
+      instance_size_slug = "apps-s-1vcpu-0.5gb"
+
+      image {
+        registry_type = "DOCR"
+        repository    = "poc-app-platform-aws"
+        tag           = var.image_tag
+      }
+
+      run_command = "python worker.py"
+
+      # Share same environment variables as main service
+      env {
+        key   = "PGHOST"
+        value = digitalocean_database_cluster.postgres.host
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "PGPORT"
+        value = digitalocean_database_cluster.postgres.port
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "PGDATABASE"
+        value = digitalocean_database_cluster.postgres.database
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "PGUSER"
+        value = digitalocean_database_cluster.postgres.user
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "PGPASSWORD"
+        value = digitalocean_database_cluster.postgres.password
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+      env {
+        key   = "PGSSLMODE"
+        value = "require"
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "VALKEY_HOST"
+        value = digitalocean_database_cluster.valkey.host
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "VALKEY_PORT"
+        value = digitalocean_database_cluster.valkey.port
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "VALKEY_PASSWORD"
+        value = digitalocean_database_cluster.valkey.password
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+      env {
+        key   = "IAM_CLIENT_CERT"
+        value = base64encode(tls_locally_signed_cert.client.cert_pem)
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+      env {
+        key   = "IAM_CLIENT_KEY"
+        value = base64encode(tls_private_key.client.private_key_pem)
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+      env {
+        key   = "IAM_TRUST_ANCHOR_ARN"
+        value = aws_rolesanywhere_trust_anchor.main.arn
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "IAM_PROFILE_ARN"
+        value = aws_rolesanywhere_profile.main.arn
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "IAM_ROLE_ARN"
+        value = aws_iam_role.app_role.arn
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "AWS_REGION"
+        value = "us-west-2"
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "AWS_ACCESS_KEY_ID"
+        value = var.aws_access_key_id
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+      env {
+        key   = "AWS_SECRET_ACCESS_KEY"
+        value = var.aws_secret_access_key
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+    }
+
     ingress {
       rule {
         match {
@@ -792,7 +911,8 @@ resource "aws_iam_role_policy" "app_policy" {
         Effect = "Allow"
         Action = [
           "secretsmanager:GetSecretValue",
-          "secretsmanager:DescribeSecret"
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:UpdateSecret"
         ]
         Resource = aws_secretsmanager_secret.test_secret.arn
       }

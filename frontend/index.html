@@ -8,6 +8,11 @@
 </head>
 <body>
     <h1>Service Status Dashboard</h1>
+    <div class="controls">
+        <button id="refresh-btn" class="refresh-btn">Refresh Now</button>
+        <span id="auto-refresh-indicator" class="auto-refresh-indicator">Auto-refresh: 30s</span>
+        <span id="loading-indicator" class="loading-indicator" style="display: none;">Loading...</span>
+    </div>
     <div class="status-table-container">
         <table class="status-table">
             <thead>
@@ -15,6 +20,7 @@
                     <th>Service</th>
                     <th>Status</th>
                     <th>Endpoint / FQDN</th>
+                    <th>Last Updated</th>
                 </tr>
             </thead>
             <tbody>
@@ -22,21 +28,25 @@
                     <td>PostgreSQL</td>
                     <td><span id="postgres-status" class="status-badge">CHECKING...</span></td>
                     <td><span id="postgres-endpoint" class="endpoint-text">-</span></td>
+                    <td><span id="postgres-timestamp" class="timestamp-text">-</span></td>
                 </tr>
                 <tr>
                     <td>Valkey</td>
                     <td><span id="valkey-status" class="status-badge">CHECKING...</span></td>
                     <td><span id="valkey-endpoint" class="endpoint-text">-</span></td>
+                    <td><span id="valkey-timestamp" class="timestamp-text">-</span></td>
                 </tr>
                 <tr>
                     <td>AWS IAM Roles Anywhere</td>
                     <td><span id="iam-status" class="status-badge">CHECKING...</span></td>
                     <td><span id="iam-endpoint" class="endpoint-text">-</span></td>
+                    <td><span id="iam-timestamp" class="timestamp-text">-</span></td>
                 </tr>
                 <tr>
                     <td>AWS Secrets Manager</td>
                     <td><span id="secret-status" class="status-badge">CHECKING...</span></td>
                     <td><span id="secret-endpoint" class="endpoint-text">-</span></td>
+                    <td><span id="secret-timestamp" class="timestamp-text">-</span></td>
                 </tr>
             </tbody>
         </table>

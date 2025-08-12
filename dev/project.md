@@ -210,6 +210,150 @@ The PoC will be implemented in phases, each with clearly defined technical objec
 * Complete deployment remains achievable with single `terraform apply`
 * No hardcoded AWS credentials anywhere in the codebase
 
+## Phase 6: App Platform Worker for Continuous Data Updates
+
+**Summary:** Deploy an App Platform worker service that continuously updates timestamps in PostgreSQL, Valkey, and AWS Secrets Manager every minute. The frontend will display these timestamps alongside connectivity status to demonstrate real-time data flow from all integrated services.
+
+### Technical Objectives:
+
+1. **Worker Service Implementation**
+    * Create a Python-based worker service that runs as an App Platform worker component
+    * Implement a continuous loop that executes every 60 seconds to:
+        * Write current UTC timestamp to a dedicated PostgreSQL table (`last_update` table with columns: `source`, `timestamp`, `metadata`)
+        * Set a UTC timestamp in Valkey with key `worker:last_update`
+        * Update the AWS Secrets Manager secret with a JSON payload containing the current UTC timestamp
+    * Use the same connection patterns and environment variables as the main API
+    * Implement structured logging for all update operations
+    * Handle failures gracefully with exponential backoff retry logic
+
+2. **API Endpoint Extensions**
+    * Modify `/db/status` to include:
+        * `postgres_last_update`: UTC timestamp from the `last_update` table
+        * `valkey_last_update`: UTC timestamp from the `worker:last_update` key
+    * Modify `/secret/status` to parse and return the timestamp from the secret's JSON payload
+    * Modify `/iam/status` to include:
+        * `credentials_expiry`: expiration time of the assumed role credentials
+        * `credentials_created`: when the credentials were obtained
+    * Add a new `/worker/status` endpoint that aggregates all timestamps:
+        * Returns JSON with all data source timestamps
+        * Calculates age of each timestamp
+        * Indicates if any source is stale (>90 seconds old)
+
+3. **Infrastructure Updates (via Terraform)**
+    * Add worker service definition to the `digitalocean_app` resource:
+        * Use same container image as the API but with different run command
+        * Configure as `type = "WORKER"`
+        * Share database connection environment variables with main service
+        * Ensure worker has access to IAM Roles Anywhere certificates
+    * Update PostgreSQL schema to include `last_update` table
+    * Modify AWS Secrets Manager secret to accept JSON format
+    * Ensure IAM role permissions include `secretsmanager:UpdateSecret`
+
+4. **Frontend Enhancements**
+    * Add a "Last Updated" column after the "Endpoint / FQDN" column
+    * Display timestamps for each service:
+        * PostgreSQL: Show last update time and age (e.g., "2024-01-15 14:30:45 UTC (23s ago)")
+        * Valkey: Show last update time and age
+        * AWS Secrets Manager: Show last update time from secret content
+        * IAM Roles Anywhere: Show credential creation time and time until expiry
+    * Use color coding for timestamp freshness:
+        * Green: <60 seconds old
+        * Yellow: 60-90 seconds old
+        * Red: >90 seconds old
+    * Auto-refresh the page every 30 seconds or provide a manual refresh button
+    * Add visual indicator (spinner/badge) showing when data is being refreshed
+
+5. **Worker Lifecycle Management**
+    * Implement graceful shutdown handling for the worker
+    * Add health check endpoint specific to worker (can be same container, different command)
+    * Configure App Platform alerts for worker failures
+    * Implement dead letter queue pattern for failed updates
+
+### Implementation Details:
+
+**Worker Service Structure:**
+```python
+# worker.py
+import asyncio
+import json
+from datetime import datetime, timezone
+import os
+import logging
+
+async def update_postgres(connection_params):
+    # Update or insert timestamp in last_update table
+    pass
+
+async def update_valkey(connection_params):
+    # SET worker:last_update with current UTC timestamp
+    pass
+
+async def update_secrets_manager(iam_client):
+    # Update secret with JSON containing timestamp
+    pass
+
+async def main():
+    while True:
+        try:
+            timestamp = datetime.now(timezone.utc)
+            await asyncio.gather(
+                update_postgres(pg_params),
+                update_valkey(valkey_params),
+                update_secrets_manager(aws_client)
+            )
+            logging.info(f"Successfully updated all sources at {timestamp}")
+        except Exception as e:
+            logging.error(f"Update cycle failed: {e}")
+        
+        await asyncio.sleep(60)
+```
+
+**Terraform Worker Configuration:**
+```hcl
+# In digitalocean_app resource
+service {
+  name               = "timestamp-worker"
+  environment_slug   = "python"
+  instance_count     = 1
+  instance_size_slug = "apps-s-1vcpu-0.5gb"
+  
+  image {
+    registry_type = "DOCR"
+    repository    = var.container_repository
+    tag           = var.container_tag
+  }
+  
+  run_command = "python worker.py"
+  
+  # Share same env vars as main API service
+  env {
+    key   = "PGHOST"
+    value = digitalocean_database_cluster.postgres.host
+  }
+  # ... additional env vars
+}
+```
+
+### Success Criteria:
+
+* Worker service successfully deploys as part of `terraform apply`
+* All three data sources show timestamps updating every ~60 seconds
+* Frontend displays current timestamps with age indicators for all services
+* Timestamps remain fresh even during API restarts (worker runs independently)
+* No manual intervention required for worker deployment or operation
+* Clean separation between API and worker services while sharing same codebase
+* Graceful handling of transient failures with automatic recovery
+* Frontend clearly shows that data is being actively updated from all integrated services
+* Complete system demonstrates end-to-end integration with real-time data flow
+
+### Testing Validation:
+
+* Stop worker service → timestamps should become stale and show red in UI
+* Restart worker → timestamps should resume updating within 60 seconds
+* Kill database connection → worker should log errors but continue attempting other updates
+* Verify timestamp consistency across multiple frontend sessions
+* Confirm worker resource usage remains stable over extended runs (no memory leaks)
+
 ---
 
 ## Deliverables
