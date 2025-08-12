@@ -3,16 +3,12 @@
 # DigitalOcean App Platform integration with AWS services
 
 # =============================================================================
-# LOCAL VALUES FOR DYNAMIC DEFAULTS
+# LOCAL VALUES FOR CONSISTENT CONFIGURATION
 # =============================================================================
 
-# Local values to provide dynamic defaults based on the owner variable
-# This ensures consistent naming and tagging across all resources
+# Local values for consistent resource configuration
+# This ensures standardized naming and tagging across all resources
 locals {
-  # Use provided values or default to owner-based values
-  project_name = var.do_project_name != null ? var.do_project_name : var.owner
-  tags         = var.do_tags != null ? var.do_tags : [var.owner]
-  
   # Common tags for AWS resources
   aws_tags = {
     Owner = var.owner
@@ -26,7 +22,7 @@ locals {
 # DigitalOcean Project - Logical container for all PoC resources
 # Provides resource organization, team access control, and billing separation
 resource "digitalocean_project" "poc" {
-  name        = local.project_name
+  name        = var.do_project_name
   description = "Project for poc-app-platform-aws resources"
   purpose     = "Web Application"
   environment = "Development"
@@ -46,7 +42,7 @@ resource "digitalocean_database_cluster" "postgres" {
   size       = "db-s-1vcpu-1gb"       # Minimal size for PoC cost optimization
   region     = var.do_region
   node_count = 1                      # Single node for development/testing
-  tags       = local.tags
+  tags       = var.do_tags
   project_id = digitalocean_project.poc.id
 }
 
@@ -60,7 +56,7 @@ resource "digitalocean_database_cluster" "valkey" {
   size       = "db-s-1vcpu-1gb"      # Minimal size for PoC cost optimization
   region     = var.do_region
   node_count = 1                     # Single node for development/testing
-  tags       = local.tags
+  tags       = var.do_tags
   project_id = digitalocean_project.poc.id
 }
 

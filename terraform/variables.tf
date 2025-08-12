@@ -4,8 +4,7 @@
 variable "owner" {
   description = "Owner identifier used for resource naming, tagging, and project organization across both DigitalOcean and AWS resources"
   type        = string
-  default     = "jkeegan"
-  
+
   validation {
     condition     = length(var.owner) > 0 && can(regex("^[a-z0-9-]+$", var.owner))
     error_message = "Owner must be a non-empty string containing only lowercase letters, numbers, and hyphens."
@@ -15,19 +14,26 @@ variable "owner" {
 variable "do_region" {
   description = "DigitalOcean region for all DigitalOcean resources (App Platform, databases, Spaces)"
   type        = string
-  default     = "sfo3"
 }
 
 variable "do_tags" {
   description = "List of tags to apply to all DigitalOcean resources for organization and billing tracking"
   type        = list(string)
-  default     = null  # Will default to [var.owner] when null
+  
+  validation {
+    condition     = length(var.do_tags) > 0
+    error_message = "At least one tag must be provided."
+  }
 }
 
 variable "do_project_name" {
   description = "Name of the DigitalOcean project that will contain all resources for this PoC"
   type        = string
-  default     = null  # Will default to var.owner when null
+  
+  validation {
+    condition     = length(var.do_project_name) > 0
+    error_message = "Project name must be a non-empty string."
+  }
 }
 
 variable "image_tag" {
