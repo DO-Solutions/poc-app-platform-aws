@@ -509,6 +509,28 @@ resource "aws_cloudfront_distribution" "main" {
     max_ttl                = 0
   }
 
+  # Secrets Manager status behavior - proxy to App Platform (no caching)
+  ordered_cache_behavior {
+    path_pattern     = "/secret/status"
+    allowed_methods  = ["GET", "HEAD"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "app-platform-api"
+
+    forwarded_values {
+      query_string = false
+      headers      = ["Cache-Control", "Pragma", "Expires", "Authorization"]
+
+      cookies {
+        forward = "none"
+      }
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 0
+    max_ttl                = 0
+  }
+
   restrictions {
     geo_restriction {
       restriction_type = "none"
@@ -739,6 +761,14 @@ resource "aws_iam_role_policy" "app_policy" {
           "sts:GetCallerIdentity"
         ]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ]
+        Resource = aws_secretsmanager_secret.test_secret.arn
       }
     ]
   })
@@ -767,4 +797,27 @@ resource "aws_rolesanywhere_profile" "main" {
     Name  = "poc-app-platform-aws-profile"
     Owner = "jkeegan"
   }
+}
+
+# Phase 5: AWS Secrets Manager Integration
+
+# AWS Secrets Manager secret
+resource "aws_secretsmanager_secret" "test_secret" {
+  name        = "poc-app-platform/test-secret"
+  description = "Test secret for PoC App Platform AWS integration"
+  
+  tags = {
+    Name  = "poc-app-platform-test-secret"
+    Owner = "jkeegan"
+  }
+}
+
+# Secret version with dummy content
+resource "aws_secretsmanager_secret_version" "test_secret" {
+  secret_id = aws_secretsmanager_secret.test_secret.id
+  secret_string = jsonencode({
+    message   = "Hello from AWS Secrets Manager"
+    timestamp = "2024-12-12"
+    purpose   = "PoC demonstration of Secrets Manager integration"
+  })
 }

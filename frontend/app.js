@@ -82,4 +82,45 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('iam-status').classList.add('fail');
             document.getElementById('iam-endpoint').textContent = 'Connection error';
         });
+
+    // Fetch AWS Secrets Manager status
+    fetch(`${API_URL}/secret/status`)
+        .then(response => response.json())
+        .then(data => {
+            const secretStatus = document.getElementById('secret-status');
+            const secretEndpoint = document.getElementById('secret-endpoint');
+            
+            if (data.ok && data.secret_value && data.secret_name) {
+                secretStatus.textContent = 'OK';
+                secretStatus.classList.add('ok');
+                
+                // Display secret name and a portion of the secret value
+                let displayText = `${data.secret_name}`;
+                try {
+                    // Try to parse as JSON to show a nice preview
+                    const secretJson = JSON.parse(data.secret_value);
+                    if (secretJson.message) {
+                        displayText += ` - ${secretJson.message}`;
+                    }
+                } catch (e) {
+                    // If not JSON, show first 50 chars
+                    displayText += ` - ${data.secret_value.substring(0, 50)}...`;
+                }
+                secretEndpoint.textContent = displayText;
+            } else {
+                secretStatus.textContent = 'FAIL';
+                secretStatus.classList.add('fail');
+                if (data.error) {
+                    secretEndpoint.textContent = `Error: ${data.error}`;
+                } else {
+                    secretEndpoint.textContent = 'Secret retrieval failed';
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching Secrets Manager status:', error);
+            document.getElementById('secret-status').textContent = 'FAIL';
+            document.getElementById('secret-status').classList.add('fail');
+            document.getElementById('secret-endpoint').textContent = 'Connection error';
+        });
 });
