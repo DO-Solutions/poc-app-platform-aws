@@ -276,18 +276,6 @@ resource "digitalocean_app" "poc_app" {
         scope = "RUN_TIME"
         type  = "GENERAL"
       }
-      env {
-        key   = "AWS_ACCESS_KEY_ID"
-        value = var.aws_access_key_id
-        scope = "RUN_TIME"
-        type  = "SECRET"                        # Fallback AWS credentials
-      }
-      env {
-        key   = "AWS_SECRET_ACCESS_KEY"
-        value = var.aws_secret_access_key
-        scope = "RUN_TIME"
-        type  = "SECRET"
-      }
     }
 
     # Worker Service for Continuous Data Updates
@@ -405,18 +393,6 @@ resource "digitalocean_app" "poc_app" {
         value = "us-west-2"
         scope = "RUN_TIME"
         type  = "GENERAL"
-      }
-      env {
-        key   = "AWS_ACCESS_KEY_ID"
-        value = var.aws_access_key_id
-        scope = "RUN_TIME"
-        type  = "SECRET"
-      }
-      env {
-        key   = "AWS_SECRET_ACCESS_KEY"
-        value = var.aws_secret_access_key
-        scope = "RUN_TIME"
-        type  = "SECRET"
       }
     }
 
@@ -851,7 +827,8 @@ resource "tls_locally_signed_cert" "client" {
 # Links the CA certificate to AWS IAM for certificate-based authentication
 # Enables App Platform to assume AWS roles using X.509 certificates
 resource "aws_rolesanywhere_trust_anchor" "main" {
-  name = "poc-app-platform-aws-trust-anchor"
+  name    = "poc-app-platform-aws-trust-anchor"
+  enabled = true                                    # Ensure trust anchor is enabled
   
   source {
     source_type = "CERTIFICATE_BUNDLE"
@@ -879,11 +856,15 @@ resource "aws_iam_role" "app_role" {
         Principal = {
           Service = "rolesanywhere.amazonaws.com"
         }
-        Action = "sts:AssumeRole"
+        Action = [
+          "sts:AssumeRole",
+          "sts:TagSession",
+          "sts:SetSourceIdentity"
+        ]
         Condition = {
           StringEquals = {
-            # Validates the client certificate's Common Name
-            "aws:PrincipalTag/x509Subject/CN" = "poc-app-platform-aws-client"
+            # Validates the trust anchor being used
+            "aws:SourceArn" = aws_rolesanywhere_trust_anchor.main.arn
           }
         }
       }
@@ -929,7 +910,8 @@ resource "aws_iam_role_policy" "app_policy" {
 # Links the IAM role to the trust anchor for role assumption
 # Includes session policy for additional access control
 resource "aws_rolesanywhere_profile" "main" {
-  name = "poc-app-platform-aws-profile"
+  name    = "poc-app-platform-aws-profile"
+  enabled = true                                    # Ensure profile is enabled
   
   role_arns = [aws_iam_role.app_role.arn]
   
@@ -940,9 +922,18 @@ resource "aws_rolesanywhere_profile" "main" {
       {
         Effect = "Allow"
         Action = [
-          "sts:GetCallerIdentity"
+          "sts:GetCallerIdentity"                   # For authentication testing
         ]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",          # Read secret content
+          "secretsmanager:DescribeSecret",          # Get secret metadata
+          "secretsmanager:UpdateSecret"             # Update secret (for worker)
+        ]
+        Resource = aws_secretsmanager_secret.test_secret.arn
       }
     ]
   })

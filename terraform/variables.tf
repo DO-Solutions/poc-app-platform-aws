@@ -46,24 +46,3 @@ variable "image_tag" {
   }
 }
 
-variable "aws_access_key_id" {
-  description = "AWS Access Key ID for authentication to AWS services (Secrets Manager, IAM). Used as fallback credentials alongside IAM Roles Anywhere."
-  type        = string
-  sensitive   = true
-  
-  validation {
-    condition     = length(var.aws_access_key_id) > 0
-    error_message = "AWS Access Key ID must be provided."
-  }
-}
-
-variable "aws_secret_access_key" {
-  description = "AWS Secret Access Key corresponding to the Access Key ID. Used for AWS service authentication alongside IAM Roles Anywhere setup."
-  type        = string
-  sensitive   = true
-  
-  validation {
-    condition     = length(var.aws_secret_access_key) > 0
-    error_message = "AWS Secret Access Key must be provided."
-  }
-}

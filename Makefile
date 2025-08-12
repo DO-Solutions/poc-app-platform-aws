@@ -26,12 +26,12 @@ push:
 plan:
 	@echo "Running terraform plan..."
 	terraform -chdir=terraform init
-	terraform -chdir=terraform plan -var="image_tag=$(IMAGE_TAG)" -var="aws_access_key_id=$(AWS_ACCESS_KEY_ID)" -var="aws_secret_access_key=$(AWS_SECRET_ACCESS_KEY)"
+	terraform -chdir=terraform plan -var="image_tag=$(IMAGE_TAG)"
 
 apply:
 	@echo "Running terraform apply..."
 	terraform -chdir=terraform init
-	terraform -chdir=terraform apply -auto-approve -var="image_tag=$(IMAGE_TAG)" -var="aws_access_key_id=$(AWS_ACCESS_KEY_ID)" -var="aws_secret_access_key=$(AWS_SECRET_ACCESS_KEY)"
+	terraform -chdir=terraform apply -auto-approve -var="image_tag=$(IMAGE_TAG)"
 
 destroy:
 	@echo "Running terraform destroy..."

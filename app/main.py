@@ -27,6 +27,8 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from iam_anywhere import get_iam_anywhere_session
+
 # Configure structured logging for PoC monitoring and troubleshooting
 logging.basicConfig(
     level=logging.INFO,
@@ -257,10 +259,10 @@ def assume_role_with_certificate():
     """
     Assume IAM role using X.509 certificate via AWS IAM Roles Anywhere.
     
-    This function demonstrates the IAM Roles Anywhere authentication flow by:
+    This function implements the IAM Roles Anywhere authentication flow by:
     1. Loading X.509 client certificates from environment variables
-    2. Creating temporary certificate files for AWS SDK usage
-    3. Using AWS STS to validate authentication (simplified for PoC)
+    2. Using the IAM Roles Anywhere CreateSession API to get temporary credentials
+    3. Validating the credentials with AWS STS GetCallerIdentity
     4. Returning role assumption details including ARN and session info
     
     Returns:
@@ -284,62 +286,47 @@ def assume_role_with_certificate():
             logger.error("Missing required IAM Roles Anywhere environment variables")
             raise ValueError("Missing required IAM environment variables")
         
-        # Create temporary files for X.509 certificates (required for IAM Roles Anywhere)
-        logger.info("Creating temporary certificate files for IAM Roles Anywhere authentication")
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.pem') as cert_file:
-            cert_file.write(base64.b64decode(client_cert_b64).decode('utf-8'))
-            cert_path = cert_file.name
+        # Get AWS session using IAM Roles Anywhere
+        logger.info("Getting AWS session using IAM Roles Anywhere credentials")
+        session, credentials = get_iam_anywhere_session(
+            region=region,
+            trust_anchor_arn=trust_anchor_arn,
+            profile_arn=profile_arn,
+            role_arn=role_arn,
+            client_cert_b64=client_cert_b64,
+            client_key_b64=client_key_b64
+        )
         
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.key') as key_file:
-            key_file.write(base64.b64decode(client_key_b64).decode('utf-8'))
-            key_path = key_file.name
+        if not session or not credentials:
+            logger.error("Failed to obtain IAM Roles Anywhere session")
+            return {
+                "success": False,
+                "error": "Failed to obtain IAM Roles Anywhere credentials"
+            }
         
-        logger.info(f"Certificate files created: cert={cert_path}, key={key_path}")
-        
+        # Validate credentials with STS GetCallerIdentity
         try:
-            # AWS IAM Roles Anywhere Authentication Process
-            # Note: This is a simplified PoC implementation
-            # Production would use aws_signing_helper or official credential process
-            logger.info("Initializing AWS session for IAM Roles Anywhere authentication")
-            session = boto3.Session(region_name=region)
+            logger.info("Validating IAM Roles Anywhere credentials with STS GetCallerIdentity")
             sts_client = session.client('sts')
+            response = sts_client.get_caller_identity()
             
-            # Attempt role assumption using current AWS credentials
-            # In production, this would be done via the IAM Roles Anywhere credential process
-            # using the X.509 certificates to generate temporary credentials
-            try:
-                logger.info("Attempting AWS STS GetCallerIdentity to validate authentication")
-                response = sts_client.get_caller_identity()
-                
-                # Generate mock assumed role ARN for PoC demonstration
-                # In production, this would come from actual AssumeRoleWithWebIdentity via Roles Anywhere
-                mock_assumed_role_arn = role_arn.replace(':role/', ':assumed-role/') + '/poc-app-session'
-                
-                logger.info(f"IAM Roles Anywhere authentication successful - Account: {response.get('Account')}, Assumed Role: {mock_assumed_role_arn}")
-                
-                return {
-                    "success": True,
-                    "role_arn": mock_assumed_role_arn,
-                    "account": response.get('Account', 'N/A'),
-                    "user_id": f"AROA{response.get('UserId', 'N/A')[-16:]}:poc-app-session"
-                }
-                
-            except Exception as e:
-                # STS call failure indicates authentication/authorization issues
-                logger.error(f"IAM Roles Anywhere authentication failed - STS GetCallerIdentity error: {e}")
-                logger.error(f"This may indicate missing AWS credentials, network connectivity issues, or IAM permission problems")
-                return {
-                    "success": False,
-                    "error": f"AWS authentication failed: {str(e)}"
-                }
-        
-        finally:
-            # Clean up temporary files
-            try:
-                os.unlink(cert_path)
-                os.unlink(key_path)
-            except:
-                pass
+            logger.info(f"IAM Roles Anywhere authentication successful - Account: {response.get('Account')}, Assumed Role: {credentials.get('AssumedRoleArn')}")
+            
+            return {
+                "success": True,
+                "role_arn": credentials.get('AssumedRoleArn'),
+                "account": response.get('Account', 'N/A'),
+                "user_id": response.get('UserId', 'N/A'),
+                "credentials_expiration": credentials.get('Expiration'),
+                "subject_arn": credentials.get('SubjectArn')
+            }
+            
+        except Exception as e:
+            logger.error(f"IAM Roles Anywhere credential validation failed - STS GetCallerIdentity error: {e}")
+            return {
+                "success": False,
+                "error": f"AWS credential validation failed: {str(e)}"
+            }
         
     except Exception as e:
         logger.error(f"IAM role assumption failed: {e}")
@@ -381,12 +368,28 @@ def get_secret_from_secrets_manager():
                 "error": "Missing IAM Roles Anywhere configuration for Secrets Manager access"
             }
         
-        # Create AWS session and Secrets Manager client
-        # Note: For the PoC, we're using default credentials which should work
-        # due to the IAM role permissions we configured. In a full production setup,
-        # this would use the IAM Roles Anywhere credential process.
+        # Get AWS session using IAM Roles Anywhere
+        logger.info("Getting AWS session using IAM Roles Anywhere for Secrets Manager access")
+        trust_anchor_arn = os.environ.get('IAM_TRUST_ANCHOR_ARN')
+        profile_arn = os.environ.get('IAM_PROFILE_ARN')
+        
+        session, credentials = get_iam_anywhere_session(
+            region=region,
+            trust_anchor_arn=trust_anchor_arn,
+            profile_arn=profile_arn,
+            role_arn=role_arn,
+            client_cert_b64=client_cert_b64,
+            client_key_b64=client_key_b64
+        )
+        
+        if not session:
+            logger.error("Failed to get IAM Roles Anywhere session for Secrets Manager")
+            return {
+                "success": False,
+                "error": "Failed to obtain IAM Roles Anywhere credentials for Secrets Manager"
+            }
+        
         try:
-            session = boto3.Session(region_name=region)
             secrets_client = session.client('secretsmanager')
             
             # Actually retrieve the secret from AWS Secrets Manager

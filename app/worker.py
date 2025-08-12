@@ -35,6 +35,8 @@ import boto3
 import base64
 import tempfile
 
+from iam_anywhere import get_iam_anywhere_session
+
 # Configure structured logging for production monitoring
 logging.basicConfig(
     level=logging.INFO,
@@ -197,9 +199,24 @@ class WorkerService:
             
             logger.info(f"Connecting to AWS Secrets Manager in region {region}")
             
-            # Create AWS session using configured credentials
-            # In production, this would use IAM Roles Anywhere credential process
-            session = boto3.Session(region_name=region)
+            # Get AWS session using IAM Roles Anywhere
+            logger.info("Getting AWS session using IAM Roles Anywhere for Secrets Manager")
+            trust_anchor_arn = os.environ.get('IAM_TRUST_ANCHOR_ARN')
+            profile_arn = os.environ.get('IAM_PROFILE_ARN')
+            
+            session, credentials = get_iam_anywhere_session(
+                region=region,
+                trust_anchor_arn=trust_anchor_arn,
+                profile_arn=profile_arn,
+                role_arn=role_arn,
+                client_cert_b64=client_cert_b64,
+                client_key_b64=client_key_b64
+            )
+            
+            if not session:
+                logger.error("Failed to get IAM Roles Anywhere session for Secrets Manager")
+                raise ValueError("Failed to obtain IAM Roles Anywhere credentials")
+            
             secrets_client = session.client('secretsmanager')
             
             # Create structured JSON payload for secret content

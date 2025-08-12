@@ -12,7 +12,7 @@ This is a proof-of-concept project demonstrating DigitalOcean App Platform integ
 - **Terraform infrastructure** (`terraform/main.tf`) for deployment
 - **Docker containerization** for the FastAPI application
 
-The project follows a phased implementation approach as outlined in `dev/project.md`, integrating DigitalOcean services with selective AWS services (WAF via CloudFront, Secrets Manager via IAM Roles Anywhere).
+The project follows a phased implementation approach as outlined in `dev/project.md`, integrating DigitalOcean services with AWS services including CloudFront with WAF, IAM Roles Anywhere for certificate-based authentication, Secrets Manager, and a worker service for continuous data updates.
 
 ## Development Commands
 
@@ -42,23 +42,34 @@ uvicorn main:app --host 0.0.0.0 --port 8080
 ### Application Structure
 - **Backend**: FastAPI service with health checks and database connectivity endpoints
   - `/healthz` - Basic liveness check
-  - `/db/status` - PostgreSQL and Valkey connection status with read/write tests
-- **Frontend**: Vanilla JavaScript SPA that calls backend APIs and displays database status
+  - `/db/status` - PostgreSQL and Valkey connection status with read/write tests and timestamps
+  - `/iam/status` - AWS IAM Roles Anywhere authentication status and role information
+  - `/secret/status` - AWS Secrets Manager connectivity and secret retrieval
+  - `/worker/status` - Aggregated timestamp status from worker service updates
+- **Worker Service**: Continuous data update service that updates timestamps every minute across all integrated services
+- **Frontend**: Vanilla JavaScript SPA that calls backend APIs and displays real-time status of all integrated services
 - **Databases**: PostgreSQL for relational data, Valkey (Redis-compatible) for caching
 
 ### Environment Configuration
 The App Platform service receives database connection details via environment variables automatically injected from the attached DigitalOcean database clusters:
 - PostgreSQL: `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, `PGSSLMODE`
 - Valkey: `VALKEY_HOST`, `VALKEY_PORT`, `VALKEY_PASSWORD`
-- CORS: `API_CORS_ORIGINS` (set to Spaces bucket URL)
+- CORS: `API_CORS_ORIGINS` (set to CloudFront distribution URL)
+- AWS IAM Roles Anywhere: `IAM_CA_CERT`, `IAM_CLIENT_CERT`, `IAM_CLIENT_KEY`, `IAM_TRUST_ANCHOR_ARN`, `IAM_PROFILE_ARN`, `IAM_ROLE_ARN`
+- AWS Configuration: `AWS_REGION`, `SECRETS_MANAGER_SECRET_NAME`
 
 ### Infrastructure as Code
 All resources are managed via Terraform in `terraform/main.tf`:
 - DigitalOcean Project (`jkeegan`) contains all resources
-- App Platform service with container from DO Container Registry
+- App Platform service with API and worker components from DO Container Registry
 - PostgreSQL and Valkey database clusters
-- Spaces bucket for frontend static assets with CORS configuration
-- All resources tagged with `jkeegan` and deployed to `sfo3` region
+- Spaces bucket for frontend static assets
+- CloudFront distribution with custom domain (`poc-app-platform-aws.digitalocean.solutions`)
+- AWS WAF Web ACL integrated with CloudFront
+- AWS IAM Roles Anywhere infrastructure (trust anchor, profile, role)
+- AWS Secrets Manager secret for demonstration
+- X.509 certificates for IAM Roles Anywhere authentication
+- All resources tagged with `jkeegan` and deployed to `sfo3` (DO) and `us-west-2` (AWS) regions
 
 ### Container Registry
 Uses DigitalOcean Container Registry (`do-solutions-sfo3`) with automatic timestamped image tags in format `v1.YYYYMMDD.HHMMSS`.
@@ -70,13 +81,25 @@ Uses DigitalOcean Container Registry (`do-solutions-sfo3`) with automatic timest
 2. Container images are built and pushed to DOCR before infrastructure deployment
 3. Frontend assets are uploaded to Spaces bucket as Terraform objects
 4. Database credentials are injected as environment variables, not hardcoded
+5. X.509 certificates for AWS IAM Roles Anywhere are generated via Terraform
+6. Worker service runs continuously to update timestamps across all integrated services
 
 ### Development Standards
-- Follow the phased approach outlined in `Ddev/project.md`
-- Use the `sfo3` region for DigitalOcean resources
+- Follow the phased implementation approach outlined in `dev/project.md`
+- Use the `sfo3` region for DigitalOcean resources and `us-west-2` for AWS resources
 - Tag all resources with `jkeegan` 
 - Maintain infrastructure idempotency
 - Database connection testing includes write/read verification for PostgreSQL and SET/GET for Valkey
+- Real-time timestamp tracking demonstrates continuous data flow across all services
+- Certificate-based authentication for AWS services via IAM Roles Anywhere
 
-### Future Phases
-The project is designed to integrate AWS WAF via CloudFront (Phase 3) and AWS Secrets Manager via IAM Roles Anywhere (Phase 4) while maintaining the core DigitalOcean infrastructure.
+### Implementation Status
+The project has completed all 6 phases as outlined in `dev/project.md`:
+- **Phase 1**: Foundation DigitalOcean infrastructure ✅
+- **Phase 2**: FastAPI backend with database connectivity ✅
+- **Phase 3**: AWS WAF integration via CloudFront ✅
+- **Phase 4**: AWS IAM Roles Anywhere authentication ✅
+- **Phase 5**: AWS Secrets Manager integration ✅
+- **Phase 6**: Worker service for continuous data updates ✅
+
+The project demonstrates a complete integration between DigitalOcean App Platform and selective AWS services while maintaining the core infrastructure on DigitalOcean.
