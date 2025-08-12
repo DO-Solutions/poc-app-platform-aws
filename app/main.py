@@ -202,11 +202,7 @@ def get_secret_from_secrets_manager():
         region = os.environ.get('AWS_REGION', 'us-west-2')
         secret_name = "poc-app-platform/test-secret"
         
-        # For this PoC, we'll demonstrate the integration concept
-        # In a real implementation, this would use the proper IAM Roles Anywhere credentials
-        # For now, we'll simulate a successful secret retrieval to show the integration works
-        
-        # Check if we have the required IAM environment variables (indicating proper setup)
+        # Check if we have the required IAM environment variables
         client_cert_b64 = os.environ.get('IAM_CLIENT_CERT')
         client_key_b64 = os.environ.get('IAM_CLIENT_KEY')
         role_arn = os.environ.get('IAM_ROLE_ARN')
@@ -217,33 +213,62 @@ def get_secret_from_secrets_manager():
                 "error": "Missing IAM Roles Anywhere configuration for Secrets Manager access"
             }
         
-        # For this PoC demonstration, we'll return a simulated successful response
-        # that shows the integration is properly configured
-        # In production, this would use the actual Roles Anywhere credential process
-        # to authenticate and retrieve the real secret
-        
-        simulated_secret_value = {
-            "message": "Hello from AWS Secrets Manager",
-            "timestamp": "2024-12-12",
-            "purpose": "PoC demonstration of Secrets Manager integration"
-        }
-        
-        logger.info(f"Simulating successful secret retrieval for {secret_name} (PoC mode)")
-        
-        return {
-            "success": True,
-            "secret_value": str(simulated_secret_value).replace("'", '"'),  # Convert to JSON-like string
-            "secret_name": secret_name,
-            "secret_arn": f"arn:aws:secretsmanager:{region}:SIMULATED:secret:{secret_name}-ABC123",
-            "version_id": "SIMULATED-VERSION-ID",
-            "note": "IAM Roles Anywhere authentication configured for Secrets Manager (PoC simulation)"
-        }
+        # Create AWS session and Secrets Manager client
+        # Note: For the PoC, we're using default credentials which should work
+        # due to the IAM role permissions we configured. In a full production setup,
+        # this would use the IAM Roles Anywhere credential process.
+        try:
+            session = boto3.Session(region_name=region)
+            secrets_client = session.client('secretsmanager')
+            
+            # Actually retrieve the secret from AWS Secrets Manager
+            logger.info(f"Retrieving secret {secret_name} from AWS Secrets Manager")
+            response = secrets_client.get_secret_value(SecretId=secret_name)
+            
+            secret_value = response['SecretString']
+            secret_arn = response['ARN']
+            version_id = response['VersionId']
+            
+            logger.info(f"Successfully retrieved secret {secret_name}")
+            
+            return {
+                "success": True,
+                "secret_value": secret_value,
+                "secret_name": secret_name,
+                "secret_arn": secret_arn,
+                "version_id": version_id
+            }
+            
+        except secrets_client.exceptions.ResourceNotFoundException:
+            logger.error(f"Secret {secret_name} not found in AWS Secrets Manager")
+            return {
+                "success": False,
+                "error": f"Secret '{secret_name}' not found"
+            }
+        except secrets_client.exceptions.InvalidRequestException as e:
+            logger.error(f"Invalid request for secret {secret_name}: {e}")
+            return {
+                "success": False,
+                "error": f"Invalid request: {str(e)}"
+            }
+        except secrets_client.exceptions.InvalidParameterException as e:
+            logger.error(f"Invalid parameter for secret {secret_name}: {e}")
+            return {
+                "success": False,
+                "error": f"Invalid parameter: {str(e)}"
+            }
+        except Exception as e:
+            logger.error(f"Failed to retrieve secret {secret_name}: {e}")
+            return {
+                "success": False,
+                "error": f"Failed to retrieve secret: {str(e)}"
+            }
     
     except Exception as e:
-        logger.error(f"Secrets Manager authentication setup failed: {e}")
+        logger.error(f"Secrets Manager setup failed: {e}")
         return {
             "success": False,
-            "error": f"Authentication setup failed: {str(e)}"
+            "error": f"Setup failed: {str(e)}"
         }
 
 @app.get("/iam/status")

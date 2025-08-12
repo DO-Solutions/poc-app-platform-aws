@@ -60,6 +60,18 @@ variable "image_tag" {
   default     = "latest"
 }
 
+variable "aws_access_key_id" {
+  description = "AWS Access Key ID for Secrets Manager access"
+  type        = string
+  sensitive   = true
+}
+
+variable "aws_secret_access_key" {
+  description = "AWS Secret Access Key for Secrets Manager access"
+  type        = string
+  sensitive   = true
+}
+
 resource "digitalocean_project" "poc" {
   name        = var.do_project_name
   description = "Project for poc-app-platform-aws resources"
@@ -274,6 +286,20 @@ resource "digitalocean_app" "poc_app" {
         value = "us-west-2"
         scope = "RUN_TIME"
         type  = "GENERAL"
+      }
+
+      env {
+        key   = "AWS_ACCESS_KEY_ID"
+        value = var.aws_access_key_id
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+
+      env {
+        key   = "AWS_SECRET_ACCESS_KEY"
+        value = var.aws_secret_access_key
+        scope = "RUN_TIME"
+        type  = "SECRET"
       }
     }
 
