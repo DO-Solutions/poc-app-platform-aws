@@ -8,6 +8,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 }
 
@@ -228,6 +232,49 @@ resource "digitalocean_app" "poc_app" {
         scope = "RUN_TIME"
         type  = "SECRET"
       }
+
+      # Phase 4: IAM Roles Anywhere environment variables
+      env {
+        key   = "IAM_CLIENT_CERT"
+        value = base64encode(tls_locally_signed_cert.client.cert_pem)
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+
+      env {
+        key   = "IAM_CLIENT_KEY"
+        value = base64encode(tls_private_key.client.private_key_pem)
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+
+      env {
+        key   = "IAM_TRUST_ANCHOR_ARN"
+        value = aws_rolesanywhere_trust_anchor.main.arn
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "IAM_PROFILE_ARN"
+        value = aws_rolesanywhere_profile.main.arn
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "IAM_ROLE_ARN"
+        value = aws_iam_role.app_role.arn
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "AWS_REGION"
+        value = "us-west-2"
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
     }
 
     ingress {
@@ -439,6 +486,27 @@ resource "aws_cloudfront_distribution" "main" {
     max_ttl                = 0
   }
 
+  # IAM status behavior - proxy to App Platform
+  ordered_cache_behavior {
+    path_pattern     = "/iam/status"
+    allowed_methods  = ["GET", "HEAD"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "app-platform-api"
+
+    forwarded_values {
+      query_string = false
+
+      cookies {
+        forward = "none"
+      }
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 0
+    max_ttl                = 0
+  }
+
   restrictions {
     geo_restriction {
       restriction_type = "none"
@@ -548,4 +616,153 @@ output "acm_certificate_arn" {
 output "certificate_status" {
   description = "ACM Certificate validation status"
   value       = aws_acm_certificate_validation.main.certificate_arn
+}
+
+# Phase 4: IAM Roles Anywhere - Certificate Infrastructure
+
+# CA private key
+resource "tls_private_key" "ca" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+# Self-signed CA certificate
+resource "tls_self_signed_cert" "ca" {
+  private_key_pem = tls_private_key.ca.private_key_pem
+  
+  subject {
+    common_name  = "PoC App Platform AWS CA"
+    organization = "DigitalOcean Solutions"
+  }
+  
+  validity_period_hours = 8760 # 1 year
+  is_ca_certificate     = true
+  
+  allowed_uses = [
+    "cert_signing",
+    "key_encipherment",
+    "digital_signature",
+  ]
+}
+
+# Client private key
+resource "tls_private_key" "client" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+# Client certificate request
+resource "tls_cert_request" "client" {
+  private_key_pem = tls_private_key.client.private_key_pem
+  
+  subject {
+    common_name  = "poc-app-platform-aws-client"
+    organization = "DigitalOcean Solutions"
+  }
+}
+
+# Client certificate signed by CA
+resource "tls_locally_signed_cert" "client" {
+  cert_request_pem   = tls_cert_request.client.cert_request_pem
+  ca_private_key_pem = tls_private_key.ca.private_key_pem
+  ca_cert_pem        = tls_self_signed_cert.ca.cert_pem
+  
+  validity_period_hours = 8760 # 1 year
+  
+  allowed_uses = [
+    "key_encipherment",
+    "digital_signature",
+    "client_auth",
+  ]
+}
+
+# Phase 4: AWS IAM Roles Anywhere Setup
+
+# IAM Roles Anywhere trust anchor
+resource "aws_rolesanywhere_trust_anchor" "main" {
+  name = "poc-app-platform-aws-trust-anchor"
+  
+  source {
+    source_type = "CERTIFICATE_BUNDLE"
+    source_data {
+      x509_certificate_data = tls_self_signed_cert.ca.cert_pem
+    }
+  }
+  
+  tags = {
+    Name  = "poc-app-platform-aws-trust-anchor"
+    Owner = "jkeegan"
+  }
+}
+
+# IAM role for the application
+resource "aws_iam_role" "app_role" {
+  name = "poc-app-platform-aws-role"
+  
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "rolesanywhere.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+        Condition = {
+          StringEquals = {
+            "aws:PrincipalTag/x509Subject/CN" = "poc-app-platform-aws-client"
+          }
+        }
+      }
+    ]
+  })
+  
+  tags = {
+    Name  = "poc-app-platform-aws-role"
+    Owner = "jkeegan"
+  }
+}
+
+# IAM policy for minimal permissions
+resource "aws_iam_role_policy" "app_policy" {
+  name = "poc-app-platform-aws-policy"
+  role = aws_iam_role.app_role.id
+  
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "sts:GetCallerIdentity"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# IAM Roles Anywhere profile
+resource "aws_rolesanywhere_profile" "main" {
+  name = "poc-app-platform-aws-profile"
+  
+  role_arns = [aws_iam_role.app_role.arn]
+  
+  session_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "sts:GetCallerIdentity"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+  
+  tags = {
+    Name  = "poc-app-platform-aws-profile"
+    Owner = "jkeegan"
+  }
 }

@@ -4,6 +4,7 @@ const API_URL = window.location.hostname === 'poc-app-platform-aws.digitalocean.
     : 'https://poc-app-platform-aws-defua.ondigitalocean.app';
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Fetch database status
     fetch(`${API_URL}/db/status`)
         .then(response => response.json())
         .then(data => {
@@ -32,5 +33,39 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('postgres-status').classList.add('fail');
             document.getElementById('valkey-status').textContent = 'FAIL';
             document.getElementById('valkey-status').classList.add('fail');
+        });
+
+    // Fetch IAM Roles Anywhere status
+    fetch(`${API_URL}/iam/status`)
+        .then(response => response.json())
+        .then(data => {
+            const iamStatus = document.getElementById('iam-status');
+            const iamDetails = document.getElementById('iam-details');
+            
+            if (data.ok && data.role_arn) {
+                iamStatus.textContent = 'OK';
+                iamStatus.classList.add('ok');
+                
+                let detailText = `Role: ${data.role_arn}`;
+                if (data.account && data.account !== 'N/A') {
+                    detailText += `\nAccount: ${data.account}`;
+                }
+                if (data.note) {
+                    detailText += `\n${data.note}`;
+                }
+                iamDetails.textContent = detailText;
+            } else {
+                iamStatus.textContent = 'FAIL';
+                iamStatus.classList.add('fail');
+                if (data.error) {
+                    iamDetails.textContent = `Error: ${data.error}`;
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching IAM status:', error);
+            document.getElementById('iam-status').textContent = 'FAIL';
+            document.getElementById('iam-status').classList.add('fail');
+            document.getElementById('iam-details').textContent = 'Connection error';
         });
 });

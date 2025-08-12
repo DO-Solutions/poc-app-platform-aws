@@ -12,7 +12,7 @@ This is a proof-of-concept project demonstrating DigitalOcean App Platform integ
 - **Terraform infrastructure** (`terraform/main.tf`) for deployment
 - **Docker containerization** for the FastAPI application
 
-The project follows a phased implementation approach as outlined in `DEV.md`, integrating DigitalOcean services with selective AWS services (WAF via CloudFront, Secrets Manager via IAM Roles Anywhere).
+The project follows a phased implementation approach as outlined in `dev/project.md`, integrating DigitalOcean services with selective AWS services (WAF via CloudFront, Secrets Manager via IAM Roles Anywhere).
 
 ## Development Commands
 
@@ -72,7 +72,7 @@ Uses DigitalOcean Container Registry (`do-solutions-sfo3`) with automatic timest
 4. Database credentials are injected as environment variables, not hardcoded
 
 ### Development Standards
-- Follow the phased approach outlined in `DEV.md`
+- Follow the phased approach outlined in `Ddev/project.md`
 - Use the `sfo3` region for DigitalOcean resources
 - Tag all resources with `jkeegan` 
 - Maintain infrastructure idempotency

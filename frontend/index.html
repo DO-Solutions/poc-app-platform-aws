@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DB Connection Status</title>
+    <title>Service Status Dashboard</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <h1>Database Connection Status</h1>
+    <h1>Service Status Dashboard</h1>
     <div class="status-container">
         <div class="service">
             <h2>PostgreSQL</h2>
@@ -16,6 +16,11 @@
         <div class="service">
             <h2>Valkey</h2>
             <div id="valkey-status" class="status-badge">-</div>
+        </div>
+        <div class="service">
+            <h2>AWS IAM Roles Anywhere</h2>
+            <div id="iam-status" class="status-badge">CHECKING...</div>
+            <div id="iam-details" class="status-details"></div>
         </div>
     </div>
     <script src="app.js"></script>

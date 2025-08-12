@@ -18,7 +18,7 @@ The PoC will be implemented in phases, each with clearly defined technical objec
     * `SPACES_ACCESS_KEY_ID`
     * `SPACES_SECRET_ACCESS_KEY`
 
-    Assume these Env Vars will be set whereever terrafrom deploy will be run and they do not need to be passed into the terraform command, but will automatically be used by terraform.
+    Assume these Env Vars will be set wherever Terrafrom deploy will be run and they do not need to be passed into the terraform command, but will automatically be used by terraform. For your testing you can get set these env vars by sourcing the file `scratch/env.sh`
 * **Stateless re‑targeting:** By updating these secrets (and any provider/account IDs captured as variables) to point at a different **DigitalOcean Team** and **AWS account**, then re-running the deploy workflow, the pipeline should create a **fresh, isolated deployment** in the new environments without modifying the previous one.
 * **Inputs over edits:** Environment- and account-specific values should be expressed as Terraform variables or GitHub Actions inputs, not hard-coded in modules or app code.
 * **Idempotence:** Terraform plans must be clean on re-runs; CI should fail on drift.
@@ -130,38 +130,85 @@ The PoC will be implemented in phases, each with clearly defined technical objec
 
 ---
 
-## Phase 4: Application Integration with AWS Secrets Manager (Non-DB Secret Demo)
+## Phase 4: AWS IAM Roles Anywhere Integration
 
-**Summary:** Extend the application to demonstrate AWS Secrets Manager access without using it for database credentials. A dummy secret will be created in Secrets Manager and retrieved by the backend API, which will return it and the IAM Role ARN used to the frontend. The frontend will display this information along with an OK/Fail badge indicating whether AWS Secrets Manager access works.
+**Summary:** Configure IAM Roles Anywhere to enable the App Platform application to authenticate to AWS services using X.509 certificates. The application will demonstrate successful authentication by retrieving and displaying the assumed IAM role ARN.
 
 ### Technical Objectives:
 
-1. **Secrets Manager Access**
+1. **Certificate Infrastructure (via Terraform)**
+   * Use the `hashicorp/tls` provider to create a self-signed CA certificate
+   * Generate a client certificate signed by the CA for the application
+   * Store certificates as App Platform environment variables or secrets
 
-    * Configure AWS IAM Roles Anywhere.
-    * Set up App Platform app to authenticate to AWS via IAM Roles Anywhere.
-    * Retrieve test secret from AWS Secrets Manager.
+2. **AWS IAM Roles Anywhere Setup (via Terraform)**
+   * Create an IAM Roles Anywhere trust anchor using the CA certificate
+   * Create an IAM role with minimal permissions (just `sts:GetCallerIdentity`)
+   * Configure an IAM Roles Anywhere profile linking the trust anchor to the role
+   * Set up trust relationship allowing assumption via Roles Anywhere
 
-2. **Application Deployment**
+3. **Application Updates**
+   * Modify the FastAPI backend to:
+      * Load the client certificate and private key from environment variables
+      * Use AWS STS with IAM Roles Anywhere to assume the role
+      * Call `sts:GetCallerIdentity` to retrieve the assumed role ARN
+   * Expose a `/iam/status` API endpoint returning JSON with:
+      * `ok`: boolean (true if role assumption succeeded)
+      * `role_arn`: string (the assumed IAM role ARN)
+      * `error`: string (optional, error message if failed)
 
-    * Modify the FastAPI backend to call AWS Secrets Manager using IAM Roles Anywhere, fetch a specific dummy secret, and determine the ARN of the IAM role used for retrieval.
-    * Expose a `/secret/status` API endpoint returning JSON with:
-
-        * `ok`: boolean
-        * `secret_value`: string (value of the dummy secret)
-        * `role_arn`: string (IAM role ARN used)
-
-3. **Frontend Update**
-
-    * Add a new section in the static JS frontend that calls `/secret/status`.
-    * Display OK/Fail status for AWS Secrets Manager connectivity.
-    * Show the secret value and IAM Role ARN in a simple, readable format.
+4. **Frontend Update**
+   * Add a new section in the static JS frontend that calls `/iam/status`
+   * Display OK/FAIL badge for IAM Roles Anywhere connectivity
+   * Show the assumed IAM Role ARN when successful
 
 ### Success Criteria:
 
-* Application retrieves the dummy secret from AWS Secrets Manager at runtime.
-* Frontend shows the OK/Fail badge, secret value, and IAM Role ARN.
-* All communication paths use secure protocols and least-privilege IAM access.
+* All certificates and IAM Roles Anywhere infrastructure created via `terraform apply`
+* Application successfully assumes IAM role using X.509 certificate authentication
+* Frontend displays OK badge and the correct IAM Role ARN
+* No manual certificate generation or AWS console configuration required
+* Clean terraform plan on subsequent runs (idempotent)
+
+---
+
+## Phase 5: AWS Secrets Manager Integration
+
+**Summary:** Extend the application to demonstrate AWS Secrets Manager access using the IAM role established in Phase 4. A dummy secret will be created in Secrets Manager, retrieved by the backend API, and displayed in the frontend.
+
+### Technical Objectives:
+
+1. **Secrets Manager Setup (via Terraform)**
+   * Create a dummy secret in AWS Secrets Manager (e.g., `poc-app-platform/test-secret`)
+   * Update the IAM role from Phase 4 to include permissions:
+      * `secretsmanager:GetSecretValue` for the specific secret
+      * `secretsmanager:DescribeSecret` for the specific secret
+
+2. **Application Updates**
+   * Extend the FastAPI backend to:
+      * Use the existing IAM Roles Anywhere authentication from Phase 4
+      * Retrieve the dummy secret from AWS Secrets Manager
+      * Handle potential errors gracefully with structured logging
+   * Expose a `/secret/status` API endpoint returning JSON with:
+      * `ok`: boolean (true if secret retrieval succeeded)
+      * `secret_value`: string (value of the dummy secret)
+      * `secret_name`: string (name/ARN of the secret)
+      * `error`: string (optional, error message if failed)
+
+3. **Frontend Update**
+   * Add a new section in the static JS frontend that calls `/secret/status`
+   * Display OK/FAIL badge for AWS Secrets Manager connectivity
+   * Show the secret value and name in a readable format
+   * Maintain visual consistency with other status badges
+
+### Success Criteria:
+
+* Dummy secret created in AWS Secrets Manager via Terraform
+* Application retrieves the secret using IAM Roles Anywhere authentication
+* Frontend shows OK badge and displays the secret value
+* All permissions follow least-privilege principle
+* Complete deployment remains achievable with single `terraform apply`
+* No hardcoded AWS credentials anywhere in the codebase
 
 ---
 

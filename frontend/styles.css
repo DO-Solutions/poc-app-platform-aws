@@ -29,3 +29,12 @@ body {
 .fail {
     background-color: #dc3545;
 }
+
+.status-details {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #666;
+    max-width: 200px;
+    word-wrap: break-word;
+    line-height: 1.4;
+}
