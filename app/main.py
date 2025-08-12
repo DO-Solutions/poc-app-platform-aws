@@ -169,15 +169,12 @@ def assume_role_with_certificate():
                 }
                 
             except Exception as e:
-                # If basic STS fails, still return success with configured role info
-                # This demonstrates the certificate setup is working
-                logger.warning(f"STS call failed, but certificates are configured: {e}")
+                # If STS call fails, this indicates authentication failure
+                # Return failure status to properly reflect the authentication state
+                logger.error(f"STS call failed - IAM authentication not working: {e}")
                 return {
-                    "success": True,
-                    "role_arn": role_arn.replace(':role/', ':assumed-role/') + '/poc-app-session',
-                    "account": "simulated",
-                    "user_id": "AROASIMULATED:poc-app-session",
-                    "note": "Certificate-based authentication configured (simulated for PoC)"
+                    "success": False,
+                    "error": f"AWS authentication failed: {str(e)}"
                 }
         
         finally:
