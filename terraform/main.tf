@@ -465,7 +465,7 @@ resource "aws_cloudfront_distribution" "main" {
     max_ttl                = 0
   }
 
-  # DB status behavior - proxy to App Platform
+  # DB status behavior - proxy to App Platform (no caching)
   ordered_cache_behavior {
     path_pattern     = "/db/status"
     allowed_methods  = ["GET", "HEAD"]
@@ -474,6 +474,7 @@ resource "aws_cloudfront_distribution" "main" {
 
     forwarded_values {
       query_string = false
+      headers      = ["Cache-Control", "Pragma", "Expires", "Authorization"]
 
       cookies {
         forward = "none"
@@ -486,7 +487,7 @@ resource "aws_cloudfront_distribution" "main" {
     max_ttl                = 0
   }
 
-  # IAM status behavior - proxy to App Platform
+  # IAM status behavior - proxy to App Platform (no caching)
   ordered_cache_behavior {
     path_pattern     = "/iam/status"
     allowed_methods  = ["GET", "HEAD"]
@@ -495,6 +496,7 @@ resource "aws_cloudfront_distribution" "main" {
 
     forwarded_values {
       query_string = false
+      headers      = ["Cache-Control", "Pragma", "Expires", "Authorization"]
 
       cookies {
         forward = "none"

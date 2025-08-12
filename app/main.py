@@ -6,7 +6,7 @@ import base64
 import boto3
 import tempfile
 import subprocess
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 # Configure logging
@@ -51,7 +51,12 @@ def healthz():
     return {"status": "ok"}
 
 @app.get("/db/status")
-def db_status():
+def db_status(response: Response):
+    # Set headers to prevent caching
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    
     pg_status = {"connected": False, "writable": False, "readable": False, "host": os.environ.get('PGHOST', 'unknown')}
     valkey_status = {"connected": False, "ping_ok": False, "set_get_ok": False, "host": os.environ.get('VALKEY_HOST', 'unknown')}
 
@@ -191,8 +196,13 @@ def assume_role_with_certificate():
         }
 
 @app.get("/iam/status")
-def iam_status():
+def iam_status(response: Response):
     """Check IAM Roles Anywhere authentication status"""
+    # Set headers to prevent caching
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    
     result = assume_role_with_certificate()
     
     return {
