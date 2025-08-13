@@ -61,6 +61,34 @@ resource "digitalocean_database_cluster" "valkey" {
 }
 
 # =============================================================================
+# DIGITALOCEAN DATABASE FIREWALLS
+# =============================================================================
+
+# PostgreSQL Database Firewall
+# Restricts database access to only the App Platform service
+# Blocks all other inbound connections for security
+resource "digitalocean_database_firewall" "postgres" {
+  cluster_id = digitalocean_database_cluster.postgres.id
+
+  rule {
+    type  = "app"
+    value = digitalocean_app.poc_app.id
+  }
+}
+
+# Valkey Database Firewall  
+# Restricts database access to only the App Platform service
+# Blocks all other inbound connections for security
+resource "digitalocean_database_firewall" "valkey" {
+  cluster_id = digitalocean_database_cluster.valkey.id
+
+  rule {
+    type  = "app"
+    value = digitalocean_app.poc_app.id
+  }
+}
+
+# =============================================================================
 # DIGITALOCEAN SPACES (OBJECT STORAGE)
 # =============================================================================
 
