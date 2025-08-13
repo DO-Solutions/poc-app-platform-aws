@@ -23,7 +23,7 @@ import boto3
 import tempfile
 import subprocess
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -445,21 +445,45 @@ def get_secret_from_secrets_manager():
 @app.get("/iam/status")
 def iam_status(response: Response):
     """Check IAM Roles Anywhere authentication status"""
-    # Set headers to prevent cachingGiven
+    # Set headers to prevent caching
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     
     result = assume_role_with_certificate()
-    current_time = datetime.now(timezone.utc)
+    
+    # Extract real AWS timestamps - REQUIRED for success
+    expiry_str = result.get("credentials_expiration")
+    if expiry_str and result["success"]:
+        try:
+            # Parse the AWS-provided expiration timestamp
+            expiry_time = datetime.fromisoformat(expiry_str.replace('Z', '+00:00'))
+            # Calculate creation time (session duration is 1 hour)
+            creation_time = expiry_time - timedelta(hours=1)
+            credentials_created = creation_time.isoformat()
+            credentials_expiry = expiry_time.isoformat()
+        except Exception as e:
+            # If we can't parse AWS timestamps, authentication failed
+            logger.error(f"Failed to parse AWS credential timestamps: {e}")
+            result["success"] = False
+            result["error"] = f"Failed to obtain AWS credential timestamps: {str(e)}"
+            credentials_created = None
+            credentials_expiry = None
+    else:
+        # No AWS timestamps = authentication failure
+        if result["success"]:
+            result["success"] = False
+            result["error"] = "No AWS credential timestamps received - authentication incomplete"
+        credentials_created = None
+        credentials_expiry = None
     
     return {
         "ok": result["success"],
         "role_arn": result.get("role_arn"),
         "account": result.get("account"),
         "user_id": result.get("user_id"),
-        "credentials_created": current_time.isoformat(),
-        "credentials_expiry": (current_time.replace(hour=current_time.hour + 1)).isoformat(),  # Mock 1-hour expiry
+        "credentials_created": credentials_created,
+        "credentials_expiry": credentials_expiry,
         "note": result.get("note"),
         "error": result.get("error")
     }

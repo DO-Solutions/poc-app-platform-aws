@@ -71,11 +71,46 @@ def get_iam_anywhere_session(
             
             # Get credentials for compatibility with existing code
             credentials_obj = session.get_credentials()
+            
+            # Get the expiry time from the credentials object - this is the real AWS timestamp
+            expiry_time = None
+            
+            # For DeferredRefreshableCredentials, we need to get the frozen credentials first
+            # to ensure the expiry time is populated
+            try:
+                if hasattr(credentials_obj, 'get_frozen_credentials'):
+                    # Force credentials to be fetched and frozen
+                    frozen_creds = credentials_obj.get_frozen_credentials()
+                    logger.debug(f"Got frozen credentials: {frozen_creds}")
+                    
+                # Now try to get the expiry time
+                if hasattr(credentials_obj, '_expiry_time') and credentials_obj._expiry_time:
+                    expiry_time = credentials_obj._expiry_time.isoformat()
+                    logger.info(f"Successfully extracted AWS credential expiry time: {expiry_time}")
+                elif hasattr(credentials_obj, '_expiry_datetime') and credentials_obj._expiry_datetime:
+                    expiry_time = credentials_obj._expiry_datetime.isoformat()
+                    logger.info(f"Successfully extracted AWS credential expiry datetime: {expiry_time}")
+                else:
+                    # Try to get from the IAMRolesAnywhereSession directly
+                    try:
+                        raw_creds = roles_anywhere_session._get_credentials()
+                        if raw_creds and 'Expiration' in raw_creds:
+                            expiry_time = raw_creds['Expiration']
+                            logger.info(f"Successfully extracted AWS credential expiry from session: {expiry_time}")
+                    except Exception as e:
+                        logger.debug(f"Could not get raw credentials from session: {e}")
+                        
+            except Exception as e:
+                logger.error(f"Error extracting expiry time: {e}")
+            
+            if not expiry_time:
+                logger.warning("Could not extract expiry time from AWS credentials - authentication incomplete")
+            
             credentials = {
                 'AccessKeyId': credentials_obj.access_key,
                 'SecretAccessKey': credentials_obj.secret_key,
                 'SessionToken': credentials_obj.token,
-                'Expiration': None,  # The session handles refresh automatically
+                'Expiration': expiry_time,  # Real AWS expiration timestamp
                 'AssumedRoleArn': f"{role_arn.replace(':role/', ':assumed-role/')}/iam-roles-anywhere-session",
                 'SubjectArn': f"arn:aws:rolesanywhere:{region}:302041564412:subject/generated"
             }
