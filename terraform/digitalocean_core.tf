@@ -12,6 +12,10 @@ locals {
   aws_tags = {
     Owner = var.owner
   }
+  
+  # Base domain extracted from custom domain
+  # Used for DNS validation and record management
+  base_domain = join(".", slice(split(".", var.custom_domain), 1, length(split(".", var.custom_domain))))
 }
 
 # =============================================================================

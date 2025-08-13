@@ -36,6 +36,7 @@ apply:
 destroy:
 	@echo "Running terraform destroy..."
 	terraform -chdir=terraform init
-	terraform -chdir=terraform destroy -auto-approve
+	# image tag is just a dummy value so the user isn't prompted for it
+	terraform -chdir=terraform destroy -auto-approve -var="image_tag=$(IMAGE_TAG)"
 
 deploy: docr-login build push apply

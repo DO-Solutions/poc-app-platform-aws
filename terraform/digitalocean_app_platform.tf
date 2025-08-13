@@ -42,7 +42,7 @@ resource "digitalocean_app" "poc_app" {
       # Allows frontend hosted on Spaces to call API endpoints
       env {
         key   = "API_CORS_ORIGINS"
-        value = "https://${digitalocean_spaces_bucket.frontend.bucket_domain_name},https://poc-app-platform-aws.digitalocean.solutions"
+        value = "https://${digitalocean_spaces_bucket.frontend.bucket_domain_name},https://${var.custom_domain}"
         scope = "RUN_TIME"
         type  = "GENERAL"
       }
@@ -143,7 +143,7 @@ resource "digitalocean_app" "poc_app" {
       # AWS Service Configuration
       env {
         key   = "AWS_REGION"
-        value = "us-west-2"                     # Primary AWS region for services
+        value = var.aws_region                  # Primary AWS region for services
         scope = "RUN_TIME"
         type  = "GENERAL"
       }
@@ -267,7 +267,7 @@ resource "digitalocean_app" "poc_app" {
       }
       env {
         key   = "AWS_REGION"
-        value = "us-west-2"
+        value = var.aws_region
         scope = "RUN_TIME"
         type  = "GENERAL"
       }

@@ -57,3 +57,18 @@ variable "secrets_manager_secret_name" {
   }
 }
 
+variable "custom_domain" {
+  description = "Custom domain name for the application (e.g., poc-app-platform-aws.digitalocean.solutions)"
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9.-]+\\.[a-z]+$", var.custom_domain))
+    error_message = "Custom domain must be a valid domain name."
+  }
+}
+
+variable "aws_region" {
+  description = "AWS region for resources (except CloudFront which requires us-east-1)"
+  type        = string
+}
+

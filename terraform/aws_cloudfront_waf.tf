@@ -65,7 +65,7 @@ resource "aws_cloudfront_distribution" "main" {
   # App Platform API origin configuration
   # Proxies dynamic API requests to DigitalOcean App Platform
   origin {
-    domain_name = "poc-app-platform-aws-defua.ondigitalocean.app"
+    domain_name = replace(digitalocean_app.poc_app.live_url, "https://", "")
     origin_id   = "app-platform-api"
 
     custom_origin_config {
@@ -238,7 +238,7 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   # Custom domain configuration
-  aliases = ["poc-app-platform-aws.digitalocean.solutions"]
+  aliases = [var.custom_domain]
 
   # SSL certificate configuration
   viewer_certificate {

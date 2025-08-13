@@ -31,7 +31,7 @@ output "cloudfront_hosted_zone_id" {
 
 output "custom_domain_url" {
   description = "The custom domain URL for accessing the application through CloudFront with SSL certificate. This is the primary user-facing URL."
-  value       = "https://poc-app-platform-aws.digitalocean.solutions"
+  value       = "https://${var.custom_domain}"
 }
 
 # AWS Security Outputs

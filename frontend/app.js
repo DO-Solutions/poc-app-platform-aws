@@ -1,7 +1,7 @@
 // Determine API URL based on current domain
-const API_URL = window.location.hostname === 'poc-app-platform-aws.digitalocean.solutions' 
-    ? 'https://poc-app-platform-aws.digitalocean.solutions'
-    : 'https://poc-app-platform-aws-defua.ondigitalocean.app';
+const API_URL = window.location.hostname.includes('.digitalocean.solutions') 
+    ? `https://${window.location.hostname}`
+    : window.location.origin;
 
 let refreshInterval;
 let countdown = 30;

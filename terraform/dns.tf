@@ -6,9 +6,9 @@
 # =============================================================================
 
 # Data source for existing DigitalOcean domain
-# References the pre-existing digitalocean.solutions domain
+# References the pre-existing base domain
 data "digitalocean_domain" "main" {
-  name = "digitalocean.solutions"
+  name = local.base_domain
 }
 
 # ACM Certificate for custom domain
@@ -17,7 +17,7 @@ data "digitalocean_domain" "main" {
 resource "aws_acm_certificate" "main" {
   provider = aws.us_east_1
   
-  domain_name       = "poc-app-platform-aws.digitalocean.solutions"
+  domain_name       = var.custom_domain
   validation_method = "DNS"                     # DNS validation for automation
 
   # Ensures certificate is renewed before expiration
@@ -44,7 +44,7 @@ resource "digitalocean_record" "cert_validation" {
 
   domain = data.digitalocean_domain.main.id
   type   = each.value.type
-  name   = trimsuffix(each.value.name, ".digitalocean.solutions.")  # Remove domain suffix
+  name   = trimsuffix(each.value.name, ".${local.base_domain}.")  # Remove domain suffix
   value  = each.value.record
   ttl    = 300                                  # Short TTL for validation
 }
@@ -63,11 +63,11 @@ resource "aws_acm_certificate_validation" "main" {
 }
 
 # CNAME record pointing custom domain to CloudFront
-# Routes traffic from poc-app-platform-aws.digitalocean.solutions to CloudFront
+# Routes traffic from custom domain to CloudFront
 resource "digitalocean_record" "cloudfront_cname" {
   domain = data.digitalocean_domain.main.id
   type   = "CNAME"
-  name   = "poc-app-platform-aws"
+  name   = trimsuffix(var.custom_domain, ".${local.base_domain}")
   value  = "${aws_cloudfront_distribution.main.domain_name}."
   ttl    = 300                                  # Short TTL for flexibility
 }
