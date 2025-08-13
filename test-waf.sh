@@ -63,14 +63,12 @@ send_request() {
     fi
 }
 
-# Send requests in parallel batches of 10
-echo "Sending requests in parallel (batches of 10)..."
-for ((i=1; i<=TOTAL_REQUESTS; i+=10)); do
-    for ((j=0; j<10 && i+j<=TOTAL_REQUESTS; j++)); do
-        send_request $((i+j)) &
-    done
-    wait
+# Send all requests in parallel as fast as possible
+echo "Sending $TOTAL_REQUESTS requests in parallel..."
+for ((i=1; i<=TOTAL_REQUESTS; i++)); do
+    send_request $i &
 done
+wait
 
 # Analyze results
 successful_requests=$(grep -c "^SUCCESS:" "$RESULTS_FILE" 2>/dev/null || echo "0")
