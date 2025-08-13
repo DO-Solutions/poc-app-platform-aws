@@ -10,13 +10,7 @@ COPY requirements.txt .
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install AWS IAM Roles Anywhere credential helper
-RUN apt-get update && apt-get install -y wget \
-    && wget -O /usr/local/bin/aws_signing_helper https://rolesanywhere.amazonaws.com/releases/1.1.1/X86_64/Linux/aws_signing_helper \
-    && chmod +x /usr/local/bin/aws_signing_helper \
-    && apt-get remove -y wget \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/*
+# No longer need AWS signing helper binary - using Python package instead
 
 # Copy the rest of the application code
 COPY . .
