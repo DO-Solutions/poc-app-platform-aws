@@ -191,7 +191,7 @@ class WorkerService:
             client_key_b64 = os.environ.get('IAM_CLIENT_KEY')
             role_arn = os.environ.get('IAM_ROLE_ARN')
             region = os.environ.get('AWS_REGION', 'us-west-2')
-            secret_name = "poc-app-platform/test-secret"
+            secret_name = os.environ.get('SECRETS_MANAGER_SECRET_NAME', 'poc-app-platform/test-secret')
             
             if not all([client_cert_b64, client_key_b64, role_arn]):
                 logger.error("Missing IAM Roles Anywhere configuration for AWS Secrets Manager")

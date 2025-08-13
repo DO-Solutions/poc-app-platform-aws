@@ -352,7 +352,7 @@ def get_secret_from_secrets_manager():
     try:
         # AWS configuration
         region = os.environ.get('AWS_REGION', 'us-west-2')
-        secret_name = "poc-app-platform/test-secret"
+        secret_name = os.environ.get('SECRETS_MANAGER_SECRET_NAME', 'poc-app-platform/test-secret')
         
         logger.info(f"Retrieving secret '{secret_name}' from region '{region}'")
         

@@ -46,3 +46,14 @@ variable "image_tag" {
   }
 }
 
+variable "secrets_manager_secret_name" {
+  description = "Name of the AWS Secrets Manager secret used for integration demonstration"
+  type        = string
+  default     = "poc-app-platform/test-secret"
+
+  validation {
+    condition     = length(var.secrets_manager_secret_name) > 0
+    error_message = "Secrets Manager secret name cannot be empty."
+  }
+}
+

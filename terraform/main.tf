@@ -304,6 +304,12 @@ resource "digitalocean_app" "poc_app" {
         scope = "RUN_TIME"
         type  = "GENERAL"
       }
+      env {
+        key   = "SECRETS_MANAGER_SECRET_NAME"
+        value = var.secrets_manager_secret_name # Name of the AWS Secrets Manager secret
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
     }
 
     # Worker Service for Continuous Data Updates
@@ -419,6 +425,12 @@ resource "digitalocean_app" "poc_app" {
       env {
         key   = "AWS_REGION"
         value = "us-west-2"
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+      env {
+        key   = "SECRETS_MANAGER_SECRET_NAME"
+        value = var.secrets_manager_secret_name
         scope = "RUN_TIME"
         type  = "GENERAL"
       }
@@ -979,7 +991,7 @@ resource "aws_rolesanywhere_profile" "main" {
 # Stores test data for demonstrating secret retrieval and updates
 # Used by both API endpoints and worker for timestamp updates
 resource "aws_secretsmanager_secret" "test_secret" {
-  name        = "poc-app-platform/test-secret"
+  name        = var.secrets_manager_secret_name
   description = "Test secret for PoC App Platform AWS integration"
   
   tags = merge(local.aws_tags, {
