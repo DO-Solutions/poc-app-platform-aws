@@ -20,14 +20,14 @@ resource "aws_wafv2_web_acl" "main" {
   }
 
   # Rate limiting rule to prevent abuse
-  # Blocks IPs making more than 2000 requests in 5-minute window
+  # Blocks IPs making more than 100 requests in 5-minute window
   rule {
     name     = "RateLimitRule"
     priority = 1
 
     statement {
       rate_based_statement {
-        limit              = 2000               # Requests per 5-minute window
+        limit              = 100               # Requests per 5-minute window
         aggregate_key_type = "IP"              # Rate limit per source IP
       }
     }

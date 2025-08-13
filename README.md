@@ -77,6 +77,40 @@ The solution implements a hybrid cloud architecture that leverages the strengths
 - Leverage AWS global CDN without hosting compute there
 - Use AWS IAM for security without EC2 costs
 
+## Security Demonstration: AWS WAF in Action
+
+One of the key benefits of this hybrid architecture is enterprise-grade security through AWS WAF. The demo includes live DDoS protection that you can test yourself.
+
+### Try the WAF Rate Limiting
+
+The demo is protected by AWS WAF with a 100 requests per 5-minute rate limit. You can trigger this protection to see it in action:
+
+```bash
+# Clone this repository
+git clone <repository-url>
+cd poc-app-platform-aws
+
+# Run the WAF test script
+./test-waf.sh
+```
+
+**What you'll see:**
+- ✅ First ~100 requests succeed (HTTP 200)  
+- 🚫 Additional requests get blocked (HTTP 403)
+- 📊 Clear summary showing when blocking started
+
+This demonstrates real protection against:
+- **DDoS attacks** - Automatic blocking of excessive requests
+- **API abuse** - Rate limiting prevents service overload  
+- **Resource exhaustion** - Protects your App Platform from being overwhelmed
+
+### Why This Matters
+
+- **No additional infrastructure** - WAF runs in AWS edge locations globally
+- **Automatic protection** - No manual intervention needed during attacks
+- **Cost effective** - Only pay for requests processed, not idle capacity
+- **Scales infinitely** - AWS handles traffic spikes you never could on your own
+
 ## Understanding the Architecture
 
 ### Core Infrastructure (DigitalOcean)
