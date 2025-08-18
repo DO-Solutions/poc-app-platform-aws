@@ -24,7 +24,11 @@ When you visit the demo URL, you'll see a status dashboard with four services:
 - **Service**: The integrated component
 - **Status**: Green = working, Red = issues
 - **Endpoint/FQDN**: The actual connection details being used
-- **Last Updated**: Timestamp showing real-time updates (refreshed every 60 seconds by background worker)
+- **Last Updated**: Timestamp showing real-time updates made by background worker every 60-seconds.
+  - Timestamp of the last time a record was updated in Postgres DB
+  - Timestamp of the last time a keys value was update in ValKey DB
+  - Timestamp of the last time IAM Role was assumed (this would be the case for any page load and not refreshed by worker)
+  - Timestamp of the last time a secret value was updated in AWS Secrets Manager
 
 ### Key Integration Points
 
