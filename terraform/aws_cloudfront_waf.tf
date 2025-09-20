@@ -88,6 +88,12 @@ resource "aws_cloudfront_distribution" "main" {
       origin_protocol_policy = "https-only"    # Force HTTPS to Spaces
       origin_ssl_protocols   = ["TLSv1.2"]
     }
+
+    # Custom header for bucket policy access control
+    custom_header {
+      name  = "Referer"
+      value = digitalocean_spaces_bucket.frontend.name
+    }
   }
 
   enabled             = true

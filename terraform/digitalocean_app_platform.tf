@@ -13,7 +13,7 @@ resource "digitalocean_app" "poc_app" {
   
   spec {
     name   = "poc-app-platform-aws"
-    region = var.do_region
+    region = substr(var.do_region, 0, 3)
 
     # Main API Service
     # Runs the FastAPI application serving REST endpoints
@@ -26,6 +26,7 @@ resource "digitalocean_app" "poc_app" {
       # Container image configuration
       image {
         registry_type = "DOCR"                  # DigitalOcean Container Registry
+        registry = "do-solutions-sfo3"
         repository    = "poc-app-platform-aws"
         tag           = var.image_tag           # Allows dynamic image updates
       }
@@ -166,6 +167,7 @@ resource "digitalocean_app" "poc_app" {
       # Uses same container image with different command
       image {
         registry_type = "DOCR"
+        registry = "do-solutions-sfo3"
         repository    = "poc-app-platform-aws"
         tag           = var.image_tag
       }
