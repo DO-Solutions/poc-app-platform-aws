@@ -72,3 +72,15 @@ variable "aws_region" {
   type        = string
 }
 
+variable "aws_access_key_id" {
+  description = "AWS Access Key ID for authenticating with AWS services (not used for backend)"
+  type        = string
+  sensitive   = true
+}
+
+variable "aws_secret_access_key" {
+  description = "AWS Secret Access Key for authenticating with AWS services (not used for backend)"
+  type        = string
+  sensitive   = true
+}
+
