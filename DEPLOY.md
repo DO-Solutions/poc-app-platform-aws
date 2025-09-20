@@ -18,7 +18,7 @@ This guide contains all technical details for deploying the PoC App Platform AWS
    cd poc-app-platform-aws
    ```
 
-2. **Set environment variables** (you can source `scratch/env.sh` for development):
+2. **Set environment variables**:
    ```bash
    export DIGITALOCEAN_ACCESS_TOKEN="your-do-token"
    export AWS_ACCESS_KEY_ID="your-aws-key"
@@ -26,6 +26,35 @@ This guide contains all technical details for deploying the PoC App Platform AWS
    export SPACES_ACCESS_KEY_ID="your-spaces-key"
    export SPACES_SECRET_ACCESS_KEY="your-spaces-secret"
    ```
+
+## Terraform State Backend Configuration
+
+This project uses **DigitalOcean Spaces** as the Terraform state backend for centralized state management and team collaboration.
+
+### How It Works
+
+**Credential Separation**: The project requires different credentials for different purposes:
+
+1. **Backend Access** (DigitalOcean Spaces):
+   - Uses `SPACES_ACCESS_KEY_ID` and `SPACES_SECRET_ACCESS_KEY`
+   - These are temporarily set as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` during terraform commands
+   - Required because S3 backend always uses AWS credential environment variables
+
+2. **AWS Provider Authentication**:
+   - Uses actual AWS credentials passed as terraform variables
+   - Ensures AWS resources are created with proper permissions
+   - Separate from backend credentials to avoid conflicts
+
+3. **DigitalOcean Provider Authentication**:
+   - Uses `DIGITALOCEAN_ACCESS_TOKEN` environment variable
+   - Standard DigitalOcean provider authentication
+
+### State Storage Details
+
+- **Bucket**: `poc-app-platform-aws-tfstate` (DigitalOcean Spaces, SFO3 region)
+- **Key**: `terraform.tfstate`
+- **Endpoint**: `https://sfo3.digitaloceanspaces.com`
+- **Benefits**: Centralized state, team collaboration, state locking
 
 ## Deployment Commands
 
@@ -58,6 +87,53 @@ The project uses Make for all deployment operations:
    # Destroy all resources (use with caution)
    make destroy
    ```
+
+## Running Terraform Commands Directly
+
+If you need to run terraform commands directly (outside of the Makefile), you must handle the credential setup manually:
+
+### Method 1: Using Environment Variables
+
+```bash
+# Set up backend credentials
+# (Make sure you have set all required environment variables first)
+export AWS_ACCESS_KEY_ID=$SPACES_ACCESS_KEY_ID
+export AWS_SECRET_ACCESS_KEY=$SPACES_SECRET_ACCESS_KEY
+
+# Navigate to terraform directory
+cd terraform
+
+# Initialize (only needed once or when backend changes)
+terraform init
+
+# Run terraform commands with AWS credentials as variables
+terraform plan \
+  -var="image_tag=v1.20250920.120000" \
+  -var="aws_access_key_id=$AWS_ACCESS_KEY_ID" \
+  -var="aws_secret_access_key=$AWS_SECRET_ACCESS_KEY"
+
+terraform apply \
+  -var="image_tag=v1.20250920.120000" \
+  -var="aws_access_key_id=$AWS_ACCESS_KEY_ID" \
+  -var="aws_secret_access_key=$AWS_SECRET_ACCESS_KEY"
+```
+
+### Method 2: Using the Makefile (Recommended)
+
+The Makefile handles all credential complexity automatically:
+
+```bash
+# After setting your environment variables, run any terraform operation
+make plan
+make apply
+make destroy
+```
+
+### Configuration Files
+
+- **Static Configuration**: `terraform/terraform.tfvars` contains all non-secret values (owner, regions, tags, domain)
+- **Secrets**: Passed as terraform variables or environment variables
+- **Dynamic Values**: `image_tag` is generated automatically by the Makefile
 
 ## Deployment Process
 
@@ -193,22 +269,28 @@ docker run -p 8080:8080 --env-file .env registry.digitalocean.com/do-solutions-s
 
 ### Common Issues
 
-1. **Database Connection Errors**:
+1. **Terraform Backend/Credential Errors**:
+   - **Error: "InvalidAccessKeyId"**: Make sure you've set all required environment variables before running terraform commands
+   - **Error: "Unable to list objects in S3 bucket"**: Check that `SPACES_ACCESS_KEY_ID` and `SPACES_SECRET_ACCESS_KEY` are set correctly
+   - **AWS Provider Authentication Failures**: Ensure `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are valid AWS credentials
+   - **Mixed Credential Issues**: Never mix Spaces credentials with AWS provider credentials - the Makefile handles this separation automatically
+
+2. **Database Connection Errors**:
    - Verify environment variables are set correctly
    - Check database cluster status in DigitalOcean console
    - Ensure App Platform has database attachments
 
-2. **IAM Roles Anywhere Authentication Failures**:
+3. **IAM Roles Anywhere Authentication Failures**:
    - Verify certificates are valid and properly base64 encoded
    - Check trust anchor and profile configuration
    - Ensure role permissions include required actions
 
-3. **Frontend Not Loading**:
+4. **Frontend Not Loading**:
    - Verify Spaces bucket objects are uploaded
    - Check CloudFront distribution status
    - Validate DNS resolution for custom domain
 
-4. **Worker Service Not Updating Timestamps**:
+5. **Worker Service Not Updating Timestamps**:
    - Check App Platform worker logs
    - Verify database permissions for UPSERT operations
    - Ensure AWS credentials are valid for Secrets Manager

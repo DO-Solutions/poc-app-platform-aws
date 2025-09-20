@@ -10,6 +10,15 @@ IMAGE_TAG ?= $(DEFAULT_IMAGE_TAG)
 # freeze value
 IMAGE_TAG := $(IMAGE_TAG)
 
+# Save original AWS credentials from environment
+AWS_REAL_KEY_ID := $(AWS_ACCESS_KEY_ID)
+AWS_REAL_SECRET := $(AWS_SECRET_ACCESS_KEY)
+
+# Terraform variables for secrets and dynamic values only
+# Static configuration is in terraform/terraform.tfvars
+TF_SECRET_VARS = -var="aws_access_key_id=$(AWS_REAL_KEY_ID)" \
+                 -var="aws_secret_access_key=$(AWS_REAL_SECRET)"
+
 # Targets
 docr-login:
 	@echo "Logging in to DigitalOcean Container Registry..."
@@ -25,18 +34,26 @@ push:
 
 plan:
 	@echo "Running terraform plan..."
-	terraform -chdir=terraform init
-	terraform -chdir=terraform plan -var="image_tag=$(IMAGE_TAG)"
+	@echo "Setting up Spaces credentials for backend..."
+	@export AWS_ACCESS_KEY_ID=$(SPACES_ACCESS_KEY_ID) && \
+	export AWS_SECRET_ACCESS_KEY=$(SPACES_SECRET_ACCESS_KEY) && \
+	terraform -chdir=terraform init && \
+	terraform -chdir=terraform plan -var="image_tag=$(IMAGE_TAG)" $(TF_SECRET_VARS)
 
 apply:
 	@echo "Running terraform apply..."
-	terraform -chdir=terraform init
-	terraform -chdir=terraform apply -auto-approve -var="image_tag=$(IMAGE_TAG)"
+	@echo "Setting up Spaces credentials for backend..."
+	@export AWS_ACCESS_KEY_ID=$(SPACES_ACCESS_KEY_ID) && \
+	export AWS_SECRET_ACCESS_KEY=$(SPACES_SECRET_ACCESS_KEY) && \
+	terraform -chdir=terraform init && \
+	terraform -chdir=terraform apply -auto-approve -var="image_tag=$(IMAGE_TAG)" $(TF_SECRET_VARS)
 
 destroy:
 	@echo "Running terraform destroy..."
-	terraform -chdir=terraform init
-	# image tag is just a dummy value so the user isn't prompted for it
-	terraform -chdir=terraform destroy -auto-approve -var="image_tag=$(IMAGE_TAG)"
+	@echo "Setting up Spaces credentials for backend..."
+	@export AWS_ACCESS_KEY_ID=$(SPACES_ACCESS_KEY_ID) && \
+	export AWS_SECRET_ACCESS_KEY=$(SPACES_SECRET_ACCESS_KEY) && \
+	terraform -chdir=terraform init && \
+	terraform -chdir=terraform destroy -auto-approve -var="image_tag=$(IMAGE_TAG)" $(TF_SECRET_VARS)
 
 deploy: docr-login build push apply
