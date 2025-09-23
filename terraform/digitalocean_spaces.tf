@@ -11,7 +11,25 @@
 resource "digitalocean_spaces_bucket" "frontend" {
   name   = "poc-app-platform-aws-frontend-space"
   region = var.do_region
-  acl    = "public-read"              # Temporarily public for Terraform management
+  # acl    = "public-read"              # Temporarily public for Terraform management
+}
+
+# Spaces Bucket for Access Logs
+# Dedicated bucket for storing access logs from the frontend bucket
+resource "digitalocean_spaces_bucket" "logs" {
+  name   = "poc-app-platform-aws-logs-space"
+  region = var.do_region
+  acl    = "private"                  # Keep logs private
+}
+
+# Bucket Logging Configuration
+# Enables access logging for the frontend bucket, storing logs in the dedicated logs bucket
+resource "digitalocean_spaces_bucket_logging" "frontend_logging" {
+  bucket = digitalocean_spaces_bucket.frontend.name
+  region = var.do_region
+
+  target_bucket = digitalocean_spaces_bucket.logs.name
+  target_prefix = "frontend-logs/"
 }
 
 # CORS Configuration for Frontend Bucket
@@ -220,11 +238,49 @@ resource "digitalocean_spaces_bucket_policy" "frontend" {
   })
 }
 
+# Bucket Policy for Logs Bucket
+# Restricts access to the logs bucket and ensures secure transport
+# resource "digitalocean_spaces_bucket_policy" "logs" {
+#   region = var.do_region
+#   bucket = digitalocean_spaces_bucket.logs.name
+#
+#   policy = jsonencode({
+#     Version = "2012-10-17"
+#     Statement = [
+#       {
+#         Sid       = "DenyInsecureTransport"
+#         Effect    = "Deny"
+#         Principal = "*"
+#         Action    = "s3:*"
+#         Resource  = [
+#           "arn:aws:s3:::${digitalocean_spaces_bucket.logs.name}",
+#           "arn:aws:s3:::${digitalocean_spaces_bucket.logs.name}/*"
+#         ]
+#         Condition = {
+#           Bool = {
+#             "aws:SecureTransport" = "false"
+#           }
+#         }
+#       },
+#       {
+#         Sid       = "AllowLogDelivery"
+#         Effect    = "Allow"
+#         Principal = {
+#           Service = "logging.s3.amazonaws.com"
+#         }
+#         Action   = "s3:PutObject"
+#         Resource = "arn:aws:s3:::${digitalocean_spaces_bucket.logs.name}/frontend-logs/*"
+#       }
+#     ]
+#   })
+# }
+
 # Project Resource Association
-# Links the Spaces bucket to the DigitalOcean project for organization
+# Links the Spaces buckets to the DigitalOcean project for organization
 resource "digitalocean_project_resources" "poc" {
   project = digitalocean_project.poc.id
   resources = [
-    digitalocean_spaces_bucket.frontend.urn
+    digitalocean_spaces_bucket.frontend.urn,
+    digitalocean_spaces_bucket.logs.urn
   ]
 }
