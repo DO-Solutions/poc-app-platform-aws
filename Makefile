@@ -1,12 +1,14 @@
 # Makefile for poc-app-platform-aws
 
-.PHONY: plan apply deploy destroy docr-login build push
+.PHONY: plan apply deploy destroy docr-login build push image-tag
 
 # Variables
 REGISTRY_NAME = do-solutions-sfo3
 IMAGE_NAME = poc-app-platform-aws
 DEFAULT_IMAGE_TAG := v1.$(shell date +%Y%m%d.%H%M%S)
-IMAGE_TAG ?= $(DEFAULT_IMAGE_TAG)
+# Get current deployed image tag, fall back to timestamp if not available
+CURRENT_IMAGE_TAG := $(shell doctl apps list --format ID,Spec.Name --no-header 2>/dev/null | grep "poc-app-platform-aws" | awk '{print $$1}' | head -1 | xargs -I {} doctl apps spec get {} --format json 2>/dev/null | jq -r '.services[0].image.tag // .workers[0].image.tag // empty' | head -1 2>/dev/null || echo "")
+IMAGE_TAG ?= $(if $(CURRENT_IMAGE_TAG),$(CURRENT_IMAGE_TAG),$(DEFAULT_IMAGE_TAG))
 # freeze value
 IMAGE_TAG := $(IMAGE_TAG)
 
@@ -20,6 +22,10 @@ TF_SECRET_VARS = -var="aws_access_key_id=$(AWS_REAL_KEY_ID)" \
                  -var="aws_secret_access_key=$(AWS_REAL_SECRET)"
 
 # Targets
+image-tag:
+	@echo "Getting current deployed image tag..."
+	@doctl apps list --format ID,Spec.Name --no-header | grep "poc-app-platform-aws" | awk '{print $$1}' | head -1 | xargs -I {} doctl apps spec get {} --format json | jq -r '.services[0].image.tag // .workers[0].image.tag // empty' | head -1 || echo "(no current poc-app-platform-aws app deployed)"
+
 docr-login:
 	@echo "Logging in to DigitalOcean Container Registry..."
 	doctl registry login
