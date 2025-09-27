@@ -20,6 +20,12 @@ terraform {
       source  = "hashicorp/tls"
       version = "~> 4.0"
     }
+
+    # Used to get CloudFront IP Addresses
+    http = {
+      source  = "hashicorp/http"
+      version = "~> 3.4"
+    }
   }
 
   backend "s3" {

@@ -80,6 +80,21 @@ resource "digitalocean_spaces_bucket_object" "app_js" {
   etag         = filemd5("../frontend/app.js")
 }
 
+# Pull the master AWS IP ranges JSON
+data "http" "aws_ipranges" {
+  url = "https://ip-ranges.amazonaws.com/ip-ranges.json"
+  request_headers = { Accept = "application/json" }
+}
+
+locals {
+  ipranges      = jsondecode(data.http.aws_ipranges.response_body)
+  # IPv4 only, CloudFront service
+  cf_ipv4_cidrs_full = sort(distinct([
+    for p in local.ipranges.prefixes : p.ip_prefix
+    if try(p.service, "") == "CLOUDFRONT"
+  ]))
+}
+
 # Bucket Policy for CloudFront-Only Access or via authenticated users.
 resource "digitalocean_spaces_bucket_policy" "frontend" {
   region = var.do_region
@@ -89,7 +104,7 @@ resource "digitalocean_spaces_bucket_policy" "frontend" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid       = "DenyAnonGetIfNotFromCloudFront"
+        Sid       = "DenyAnonGetIfNotFromCloudFront1"
         Effect    = "Deny"
         Principal = "*"
         Action    = ["s3:GetObject"]
@@ -99,50 +114,7 @@ resource "digitalocean_spaces_bucket_policy" "frontend" {
             "aws:PrincipalType" = "Anonymous"
           }
           NotIpAddress = {
-            "aws:SourceIp" = [
-              "13.32.0.0/15",
-              "13.35.0.0/16",
-              "13.224.0.0/14",
-              "13.249.0.0/16",
-              "15.158.0.0/16",
-              "18.64.0.0/14",
-              "18.68.0.0/16",
-              "18.154.0.0/15",
-              "18.160.0.0/15",
-              "18.164.0.0/15",
-              "18.172.0.0/15",
-              "18.238.0.0/15",
-              "18.244.0.0/15",
-              "23.91.0.0/19",
-              "52.84.0.0/15",
-              "54.182.0.0/16",
-              "54.192.0.0/16",
-              "54.230.0.0/17",
-              "54.230.128.0/18",
-              "54.239.128.0/18",
-              "54.239.192.0/19",
-              "54.240.128.0/18",
-              "99.84.0.0/16",
-              "99.86.0.0/16",
-              "108.156.0.0/14",
-              "130.176.0.0/17",
-              "143.204.0.0/16",
-              "144.220.0.0/16",
-              "204.246.164.0/22",
-              "204.246.168.0/22",
-              "204.246.172.0/24",
-              "204.246.173.0/24",
-              "204.246.174.0/23",
-              "204.246.176.0/20",
-              "205.251.202.0/23",
-              "205.251.204.0/23",
-              "205.251.206.0/23",
-              "205.251.208.0/20",
-              "205.251.249.0/24",
-              "205.251.250.0/23",
-              "205.251.252.0/23",
-              "205.251.254.0/24"
-            ]
+            "aws:SourceIp" = local.cf_ipv4_cidrs_full
           }
         }
       },
@@ -169,50 +141,7 @@ resource "digitalocean_spaces_bucket_policy" "frontend" {
         Resource  = "arn:aws:s3:::${digitalocean_spaces_bucket.frontend.name}/*"
         Condition = {
           IpAddress = {
-            "aws:SourceIp" = [
-              "13.32.0.0/15",
-              "13.35.0.0/16",
-              "13.224.0.0/14",
-              "13.249.0.0/16",
-              "15.158.0.0/16",
-              "18.64.0.0/14",
-              "18.68.0.0/16",
-              "18.154.0.0/15",
-              "18.160.0.0/15",
-              "18.164.0.0/15",
-              "18.172.0.0/15",
-              "18.238.0.0/15",
-              "18.244.0.0/15",
-              "23.91.0.0/19",
-              "52.84.0.0/15",
-              "54.182.0.0/16",
-              "54.192.0.0/16",
-              "54.230.0.0/17",
-              "54.230.128.0/18",
-              "54.239.128.0/18",
-              "54.239.192.0/19",
-              "54.240.128.0/18",
-              "99.84.0.0/16",
-              "99.86.0.0/16",
-              "108.156.0.0/14",
-              "130.176.0.0/17",
-              "143.204.0.0/16",
-              "144.220.0.0/16",
-              "204.246.164.0/22",
-              "204.246.168.0/22",
-              "204.246.172.0/24",
-              "204.246.173.0/24",
-              "204.246.174.0/23",
-              "204.246.176.0/20",
-              "205.251.202.0/23",
-              "205.251.204.0/23",
-              "205.251.206.0/23",
-              "205.251.208.0/20",
-              "205.251.249.0/24",
-              "205.251.250.0/23",
-              "205.251.252.0/23",
-              "205.251.254.0/24"
-            ]
+            "aws:SourceIp" = local.cf_ipv4_cidrs_full
           }
           StringEquals = {
             "aws:Referer" = digitalocean_spaces_bucket.frontend.name
@@ -237,43 +166,6 @@ resource "digitalocean_spaces_bucket_policy" "frontend" {
     ]
   })
 }
-
-# Bucket Policy for Logs Bucket
-# Restricts access to the logs bucket and ensures secure transport
-# resource "digitalocean_spaces_bucket_policy" "logs" {
-#   region = var.do_region
-#   bucket = digitalocean_spaces_bucket.logs.name
-#
-#   policy = jsonencode({
-#     Version = "2012-10-17"
-#     Statement = [
-#       {
-#         Sid       = "DenyInsecureTransport"
-#         Effect    = "Deny"
-#         Principal = "*"
-#         Action    = "s3:*"
-#         Resource  = [
-#           "arn:aws:s3:::${digitalocean_spaces_bucket.logs.name}",
-#           "arn:aws:s3:::${digitalocean_spaces_bucket.logs.name}/*"
-#         ]
-#         Condition = {
-#           Bool = {
-#             "aws:SecureTransport" = "false"
-#           }
-#         }
-#       },
-#       {
-#         Sid       = "AllowLogDelivery"
-#         Effect    = "Allow"
-#         Principal = {
-#           Service = "logging.s3.amazonaws.com"
-#         }
-#         Action   = "s3:PutObject"
-#         Resource = "arn:aws:s3:::${digitalocean_spaces_bucket.logs.name}/frontend-logs/*"
-#       }
-#     ]
-#   })
-# }
 
 # Project Resource Association
 # Links the Spaces buckets to the DigitalOcean project for organization
