@@ -13,6 +13,7 @@ This is a hybrid cloud PoC demonstrating DigitalOcean App Platform integration w
 - **AWS**: CloudFront + WAF (global CDN with DDoS protection), IAM Roles Anywhere (certificate-based auth), Secrets Manager
 - **Infrastructure**: Terraform for Infrastructure as Code
 - **Application**: Python FastAPI with worker service for real-time monitoring
+- **Live Demo**: https://poc-app-platform-aws.digitalocean.solutions
 
 **Key Integration Pattern:**
 - X.509 certificate-based authentication to AWS (no API keys stored)
@@ -20,7 +21,6 @@ This is a hybrid cloud PoC demonstrating DigitalOcean App Platform integration w
 - Real-time status dashboard showing all service integrations
 
 ## Development Commands
-
 ### Deployment Pipeline
 ```bash
 # Full deployment (login, build, push, apply)
@@ -52,8 +52,11 @@ docker run -p 8080:8080 --env-file .env registry.digitalocean.com/do-solutions-s
 
 ### Testing and Validation
 ```bash
-# Test WAF rate limiting (will send requests until blocked)
+# Test WAF rate limiting (sends parallel requests until blocked - shows 403 errors)
 ./test-waf.sh
+
+# Test WAF with help
+./test-waf.sh -h
 
 # Manual API testing
 curl https://poc-app-platform-aws.digitalocean.solutions/healthz
@@ -82,6 +85,33 @@ aws rolesanywhere list-trust-anchors
 aws secretsmanager list-secrets
 ```
 
+### Infrastructure-Only Updates (without rebuilding Docker image)
+
+When making changes to Spaces, CloudFront, or other infrastructure without code changes, you can run terraform operations using the current deployed image tag:
+
+```bash
+# Get the current image tag from the running app
+CURRENT_TAG=$(doctl app spec get <app-id> | jq -r '.services[0].image.tag')
+
+# Run terraform apply with current image (no rebuild needed)
+export AWS_ACCESS_KEY_ID=$SPACES_ACCESS_KEY_ID
+export AWS_SECRET_ACCESS_KEY=$SPACES_SECRET_ACCESS_KEY
+terraform -chdir=terraform apply -var="image_tag=$CURRENT_TAG" -var="aws_access_key_id=$AWS_REAL_ACCESS_KEY_ID" -var="aws_secret_access_key=$AWS_REAL_SECRET_ACCESS_KEY"
+
+# Or using make with current tag
+make apply IMAGE_TAG=$CURRENT_TAG
+
+# Get app ID if needed
+doctl apps list  # Find your app ID from the output
+```
+
+**Use Cases:**
+- Updating CloudFront distribution settings
+- Modifying Spaces bucket configuration
+- Changing WAF rules or rate limits
+- Adding/removing AWS resources
+- Any Terraform changes that don't require new application code
+
 ## Environment Variables
 
 Required for deployment (see `scratch/env.sh` for development template):
@@ -89,10 +119,47 @@ Required for deployment (see `scratch/env.sh` for development template):
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`: AWS credentials for AWS providers
 - `SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_ACCESS_KEY`: DigitalOcean Spaces credentials for terraform backend
 
-**Important**: The project uses DigitalOcean Spaces as the Terraform state backend. The Makefile automatically handles credential separation:
-- Spaces credentials are used for backend access (state storage)
-- AWS credentials are passed as terraform variables for AWS provider authentication
-- This separation is handled automatically by `make plan`, `make apply`, etc.
+**CLI Tools Setup:**
+Both `doctl` (DigitalOcean CLI) and `aws` (AWS CLI) are available for troubleshooting and inspection. Before using these tools or running terraform commands, source the environment file:
+
+```bash
+# Load all required credentials
+source scratch/env.sh
+
+# Use CLI tools for READ-ONLY troubleshooting and inspection
+doctl apps list
+doctl apps logs <app-id> --component api-svc
+aws cloudfront list-distributions
+aws s3 ls
+terraform -chdir=terraform show
+```
+
+**⚠️ IMPORTANT**: CLI tools should **ONLY** be used for reading and understanding current state. **ALL CHANGES** must be made through Terraform to ensure the environment can be reproduced via `make deploy`. Do not use CLI tools to modify resources directly.
+
+**⚠️ SECURITY WARNING**: The `scratch/env.sh` file contains sensitive credentials and should **NEVER** be committed to git. Ensure it's in `.gitignore` and never share its contents.
+
+**Important**: The project uses DigitalOcean Spaces as the Terraform state backend, which creates a complex credential management pattern:
+
+**Credential Separation Pattern:**
+- **Terraform Backend (Spaces)**: Uses `SPACES_ACCESS_KEY_ID` and `SPACES_SECRET_ACCESS_KEY` as environment variables
+- **AWS Provider**: Uses `aws_access_key_id` and `aws_secret_access_key` as Terraform variables (NOT environment variables)
+
+**Why This Matters:**
+The Terraform AWS provider configuration at `terraform/terraform.tf:53-77` shows two AWS providers that get credentials via Terraform variables, while the Spaces backend gets credentials via environment variables. This means:
+
+```bash
+# ❌ WRONG - This won't work because AWS credentials would override Spaces backend access
+export AWS_ACCESS_KEY_ID="aws-key"
+export AWS_SECRET_ACCESS_KEY="aws-secret"
+terraform apply
+
+# ✅ CORRECT - Manual terraform commands need this pattern:
+export AWS_ACCESS_KEY_ID="spaces-key"
+export AWS_SECRET_ACCESS_KEY="spaces-secret"
+terraform apply -var="aws_access_key_id=real-aws-key" -var="aws_secret_access_key=real-aws-secret"
+```
+
+The Makefile handles this automatically by temporarily setting the environment variables to Spaces credentials for the backend, then passing real AWS credentials as Terraform variables.
 
 ## Key Files and Structure
 
