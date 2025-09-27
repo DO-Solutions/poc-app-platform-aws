@@ -29,6 +29,11 @@ output "cloudfront_hosted_zone_id" {
   value       = aws_cloudfront_distribution.main.hosted_zone_id
 }
 
+output "cloudfront_distribution_id" {
+  description = "The CloudFront distribution ID used for cache invalidation and management operations."
+  value       = aws_cloudfront_distribution.main.id
+}
+
 output "custom_domain_url" {
   description = "The custom domain URL for accessing the application through CloudFront with SSL certificate. This is the primary user-facing URL."
   value       = "https://${var.custom_domain}"

@@ -1,6 +1,6 @@
 # Makefile for poc-app-platform-aws
 
-.PHONY: plan apply deploy destroy docr-login build push image-tag
+.PHONY: plan apply deploy destroy docr-login build push image-tag invalidate-cache invalidate-cache-quick check-cache-headers
 
 # Variables
 REGISTRY_NAME = do-solutions-sfo3
@@ -63,3 +63,22 @@ destroy:
 	terraform -chdir=terraform destroy -auto-approve -var="image_tag=$(IMAGE_TAG)" $(TF_SECRET_VARS)
 
 deploy: docr-login build push apply
+
+invalidate-cache:
+	@echo "Invalidating CloudFront cache and waiting for completion..."
+	./scripts/invalidate-cache.sh
+
+invalidate-cache-quick:
+	@echo "Invalidating CloudFront cache (no wait)..."
+	./scripts/invalidate-cache.sh --no-wait
+
+check-cache-headers:
+	@echo "Checking cache headers for custom domain..."
+	@DOMAIN="poc-app-platform-aws.digitalocean.solutions" && \
+	echo "Testing cache headers for: $$DOMAIN" && \
+	echo "" && \
+	echo "=== Frontend (index.html) ===" && \
+	curl -I "https://$$DOMAIN/" | grep -iE "(cache-control|expires|etag|last-modified|age|x-cache)" || echo "No cache headers found" && \
+	echo "" && \
+	echo "=== Static Asset (CSS) ===" && \
+	curl -I "https://$$DOMAIN/styles.css" 2>/dev/null | grep -iE "(cache-control|expires|etag|last-modified|age|x-cache)" || echo "No cache headers found (file may not exist)"

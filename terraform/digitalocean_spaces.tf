@@ -80,21 +80,6 @@ resource "digitalocean_spaces_bucket_object" "app_js" {
   etag         = filemd5("../frontend/app.js")
 }
 
-# Pull the master AWS IP ranges JSON
-data "http" "aws_ipranges" {
-  url = "https://ip-ranges.amazonaws.com/ip-ranges.json"
-  request_headers = { Accept = "application/json" }
-}
-
-locals {
-  ipranges      = jsondecode(data.http.aws_ipranges.response_body)
-  # IPv4 only, CloudFront service
-  cf_ipv4_cidrs_full = sort(distinct([
-    for p in local.ipranges.prefixes : p.ip_prefix
-    if try(p.service, "") == "CLOUDFRONT"
-  ]))
-}
-
 # Bucket Policy for CloudFront-Only Access or via authenticated users.
 resource "digitalocean_spaces_bucket_policy" "frontend" {
   region = var.do_region
@@ -103,21 +88,6 @@ resource "digitalocean_spaces_bucket_policy" "frontend" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      {
-        Sid       = "DenyAnonGetIfNotFromCloudFront1"
-        Effect    = "Deny"
-        Principal = "*"
-        Action    = ["s3:GetObject"]
-        Resource  = "arn:aws:s3:::${digitalocean_spaces_bucket.frontend.name}/*"
-        Condition = {
-          StringEquals = {
-            "aws:PrincipalType" = "Anonymous"
-          }
-          NotIpAddress = {
-            "aws:SourceIp" = local.cf_ipv4_cidrs_full
-          }
-        }
-      },
       {
         Sid       = "DenyAnonGetIfBadReferer"
         Effect    = "Deny"
@@ -140,9 +110,6 @@ resource "digitalocean_spaces_bucket_policy" "frontend" {
         Action    = ["s3:GetObject"]
         Resource  = "arn:aws:s3:::${digitalocean_spaces_bucket.frontend.name}/*"
         Condition = {
-          IpAddress = {
-            "aws:SourceIp" = local.cf_ipv4_cidrs_full
-          }
           StringEquals = {
             "aws:Referer" = digitalocean_spaces_bucket.frontend.name
           }
